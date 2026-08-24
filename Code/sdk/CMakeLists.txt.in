@@ -1,0 +1,124 @@
+# All rights reserved.
+#
+
+cmake_minimum_required(VERSION 3.13)
+
+set(SOURCE_TOP_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(BINARY_TOP_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(CMAKE_C_COMPILER_FORCED   1)
+set(CMAKE_CXX_COMPILER_FORCED 1)
+
+set(WM_PROD_APP 77)
+set(WM_UI_APP 88)
+set(WM_LIB 99)
+set(WM_BUILD_PURPOSE ${WM_UI_APP})  # Change this to WM_PROD_APP, WM_UI_APP or WM_LIB as needed
+configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/wm_config.h.in  ${CMAKE_CURRENT_SOURCE_DIR}/wm_src/wm_lib/inc/wm_config.h @ONLY)
+option(USE_XIP "Execute-in-place (XIP) flash image" OFF)
+
+set(out_hex_dir ${CMAKE_CURRENT_BINARY_DIR}/hex)
+set(out_lib_dir ${CMAKE_CURRENT_BINARY_DIR}/lib)
+set(out_inc_dir ${CMAKE_CURRENT_BINARY_DIR}/include)
+set(tools_dir ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+set(aboot_dir  ${SOURCE_TOP_DIR}/../../Tools/aboot)
+
+set(module_version $ENV{module_version})
+set(build_target $ENV{para_ab_target})
+set(core_stub_o ${CMAKE_CURRENT_SOURCE_DIR}/../kernel/${module_version}/core_stub/core_stub.o)
+if(USE_XIP)
+    set(flash_ldscript "${SOURCE_TOP_DIR}/ldscripts/app_flashimg_xip.ld")
+else()
+    set(flash_ldscript "${SOURCE_TOP_DIR}/ldscripts/app_flashimg.ld")
+endif()
+set(cmd_mkappimg dtools mkappimg)
+set(ctool_sign ctools appSign)
+
+include(cmake/core_config.cmake)
+include(cmake/toolchain-gcc.cmake)
+include(cmake/extension.cmake)
+set(BUILD_SHARED_LIBS OFF)
+project(core C CXX ASM)
+
+add_definitions(-DMODULE_$ENV{para_module_version})
+if($ENV{para_flash_size} MATCHES "16")
+	add_definitions(-DBOARD_FLASH_SIZE_16M)
+elseif($ENV{para_flash_size} MATCHES "8")
+    add_definitions(-DBOARD_FLASH_SIZE_8M)
+elseif($ENV{para_flash_size} MATCHES "4")
+    set(flash_ldscript ${SOURCE_TOP_DIR}/ldscripts/app_flashimg_xip.ld)
+    add_definitions(-DBOARD_FLASH_SIZE_4M)
+endif()
+
+# 云喇叭应用配置
+if(${build_target} MATCHES "cisspk")
+# 外挂flash使能
+# add_definitions(-DBOARD_EXT_FLASH_EN)
+# 阿里云设备动态注册
+# add_definitions(-DALIIOT_DYNREG_EN)
+endif()
+include_directories(
+    components/inc
+    ../kernel/${module_version}/inc
+    components/newlib/include
+    components/lwip
+    components/lwip/lwip
+    components/lwip/arch
+    components/lwip/ipv4
+    components/lwip/ipv6
+    components/lwip/netif
+    components/mbedtls/include
+    components/zlib
+    components/zlib/contrib/minizip
+    components/libc_wrap
+    wm_src/wm_lib/global
+    wm_src/sdk/inc
+    wm_src/wm_ui_app
+    wm_src/wm_lib
+    wm_src/wm_lib/Inc
+    wm_src/weware_app
+    wm_src/weware_app/inc
+    wm_src/weware_app/inc/common
+    wm_src/weware_app/inc/module
+    wm_src/weware_app/inc/system
+)
+
+function(cpp_only target file)
+    add_library(${target} OBJECT ${file})
+    set_source_files_properties(${file} PROPERTIES LANGUAGE C)
+    target_compile_options(${target} PRIVATE -E -P -x c)
+endfunction()
+
+function(add_appimg target ldscript)
+    set(gen_ldscript ${target}_ldscript)
+    set(target_map_file ${out_hex_dir}/${target}.map)
+    set(target_img_file ${out_hex_dir}/${target}.bin)
+    cpp_only(${gen_ldscript} ${ldscript})
+    add_executable(${target} ${ARGN} ${core_stub_o})
+    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${out_hex_dir})
+    target_link_libraries(${target} PRIVATE -T $<TARGET_OBJECTS:${gen_ldscript}>)
+    target_link_libraries(${target} PRIVATE -Wl,-Map=${target_map_file} -nostdlib -Wl,--gc-sections)
+    target_link_libraries(${target} PRIVATE -Wl,--start-group)
+    target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/lib_wmsrc.a)
+    target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/lib_wmsrc_B.a)
+    target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/libhttpclient.a)
+    target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/libjson.a)
+    target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/libwm_mqtt.a)
+
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${cmd_mkappimg} $<TARGET_FILE:${target}> ${target_img_file}
+        BYPRODUCTS ${target_img_file} ${target_map_file}
+    )
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${ctool_sign} -p ASR -t ${aboot_dir} ${target_img_file}
+        DEPENDS ${target_img_file}
+        WORKING_DIRECTORY ${SOURCE_TOP_DIR}
+    )
+endfunction()
+
+message("Board Flash Size: $ENV{para_flash_size}M")
+add_subdirectory_if_exist(components)
+add_subdirectory_if_exist(wm_src)
+set(target customer_app)
+add_appimg(${target} ${flash_ldscript}  hello_world.c)
+target_link_libraries(${target} PRIVATE zlibstatic libc_wrap _wmsrc)
+target_link_libraries(${target} PRIVATE ${libc_file_name} ${libm_file_name} ${libgcc_file_name})
+target_link_libraries(${target} PRIVATE -Wl,--end-group)

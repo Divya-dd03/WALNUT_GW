@@ -1,0 +1,15 @@
+/Code/sdk/prebuilts
+/Code/sdk/out
+/.vs
+/Code/sdk/CMakeLists.txt
+/Code/sdk/wm_config.h
+/Code/sdk/wm_src/wm_lib/Inc/wm_config.h
+extras
+.vscode
+TODO*
+/Tools/*
+!/Tools/aboot/
+/Tools/aboot/*
+!/Tools/aboot/config
+!/Tools/aboot/images
+Code/sdk/__pycache__

@@ -1,0 +1,257 @@
+/**
+  ******************************************************************************
+  * @file    SC_enum.h
+  * @brief   External function calls.
+  * @author  Walnut Medical
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2024 Walnut Medical
+  * All rights reserved.
+  *
+  ******************************************************************************
+  */
+
+#ifndef __SC_ENUM_H__
+#define __SC_ENUM_H__
+
+/* Debug Control */
+typedef enum
+{
+    WM_DEBUG_INFO = 1,
+    WM_DEBUG_WARNING = 2,
+    WM_DEBUG_ERROR = 3,
+    WM_DEBUG_CRITICAL = 4,
+    WM_DEBUG_FATAL = 5,
+    WM_DEBUG_NONE = 6,
+} WM_DEBUG_LEVEL;
+
+/* OS */
+enum sim_msg_id
+{
+    SIM_MSG_INIT = 0,
+    SRV_CREATER,
+    SRV_SELF,
+    SRV_NET_CONTROL,
+    SRV_URC,
+    SRV_UART,
+    SRV_UART3,
+    SRV_USB_VCOM,
+    SRV_SMS,
+    SIM_MSG_MAX,
+    STF_OTA
+};
+
+typedef enum
+{
+    SC_TASK_READY,
+    SC_TASK_COMPLETED,
+    SC_TASK_TERMINATED,
+    SC_TASK_SUSPENDED,
+    SC_TASK_SLEEP,
+    SC_TASK_QUEUE_SUSP,
+    SC_TASK_SEMAPHORE_SUSP,
+    SC_TASK_EVENT_FLAG,
+    SC_TASK_BLOCK_MEMORY,
+    SC_TASK_MUTEX_SUSP,
+    SC_TASK_STATE_UNKNOWN,
+}SC_TASK_STATE;
+
+/* Debug Control */
+
+/* Network Control */
+typedef enum
+{
+    SC_HTTPS_SUCCESS,
+    SC_HTTPS_FAIL,
+    SC_HTTPS_SERVICE_NOT_AVAILABLE,
+    SC_HTTPS_INVALID_PARAMETER,
+    SC_HTTPS_FILE_NOT_EXIST,
+    SC_HTTPS_WRITE_FILE_FAIL,
+    SC_HTTPS_READ_FILE_FAIL,
+    SC_HTTPS_DNS_PARSE_FAIL,
+    SC_HTTPS_CONNECT_FAIL,
+    SC_HTTPS_HANDSHAKE_FAILED,
+    SC_HTTPS_TRANSFER_ERROR,      //http receive data or send fail.
+    SC_HTTPS_ERROR_END
+} SC_HTTP_RETURNCODE;
+
+typedef enum
+{
+    WM_DOWNLOAD_SUCESSED,
+    WM_DOWNLOAD_PDP_ACTIVE_FAIL,
+    WM_DOWNLOAD_OPERATION_BUSY,
+    WM_DOWNLOAD_CONN_REJECT,
+    WM_DOWNLOAD_DOMAIN_UNKNOWN,
+    WM_DOWNLOAD_SEND_ERR,
+    WM_DOWNLOAD_RECV_ERR,
+    WM_DOWNLOAD_PARAM_INVALID,
+    WM_DOWNLOAD_UNKNOWN_ERR,
+    WM_DOWNLOAD_OPEN_PARTITION_FAIL,
+    WM_DOWNLOAD_WRITE_PARTITION_FAIL,
+    WM_DOWNLOAD_NO_MEMORY,
+    WM_DOWNLOAD_FILE_NOT_EXIST,
+    WM_DOWNLOAD_FAIL,
+    WM_SSL_FAIL
+}WM_DL_Ret;
+
+typedef enum
+{
+    WM_APP_DOWNLOAD_SUCESSED,
+    WM_APP_DOWNLOAD_PDP_ACTIVE_FAIL,
+    WM_APP_DOWNLOAD_OPERATION_BUSY,
+    WM_APP_DOWNLOAD_CONN_REJECT,  //connect server fail
+    WM_APP_DOWNLOAD_DOMAIN_UNKNOWN,
+    WM_APP_DOWNLOAD_SEND_ERR,//5
+    WM_APP_DOWNLOAD_RECV_ERR,
+    WM_APP_DOWNLOAD_PARAM_INVALID,
+    WM_APP_DOWNLOAD_UNKNOWN_ERR,
+    WM_APP_DOWNLOAD_OPEN_PARTITION_FAIL,
+    WM_APP_DOWNLOAD_WRITE_PARTITION_FAIL,//10
+    WM_APP_DOWNLOAD_NO_MEMORY,
+    WM_APP_DOWNLOAD_FILE_NOT_EXIST,
+    WM_APP_DOWNLOAD_FAIL,
+    WM_FILE_DOWNLOAD_FAIL,
+    WM_FILE_DOWNLOAD_SUCESSED,
+    WM_BUFF_DOWNLOAD_FAIL,
+    WM_BUFF_DOWNLOAD_SUCESSED,
+    WM_FILE_DOWNLOAD_NO_MEMORY,
+    WM_NETWORK_FAILURE,
+    WM_FILE_DOWNLOAD_INVAILD_URL,
+    WM_GARBAGE_FILE_REMOVE_FAILED,
+    WM_FILE_EXIST,
+    WM_UNZIP_SUCCESS,
+    WM_UNZIP_FAIL,
+    WM_BIN_DOWNLOAD_SUCCESS,
+    WM_DFOTA_BIN_DOWNLOAD_SUCCESS,
+}WMFileDwonLoadReturnCode;
+
+typedef enum {
+    SC_SIM_RETURN_SUCCESS,
+    SC_SIM_RETURN_FAIL,
+    SC_SIM_RTEURN_UNKNOW
+}SC_simcard_err_e;
+
+/* Power Control */
+typedef enum {
+    SC_ONKEY_PRESSED,
+    SC_ONKEY_RELEASED
+} POWER_KEY_STATUS;
+
+/* LED Control */
+typedef enum {
+    WM_LED_OFF,
+    WM_LED_RED,
+    WM_LED_GREEN,
+    WM_LED_BLUE,
+    WM_LED_YELLOW
+} WM_LEDS_INDICATOR;
+
+/* LCD Control */
+typedef enum
+{
+    WM_SIM_CARD_REMOVED = 1,
+    WM_SOUND_FILE_LIST_ERR,
+    WM_SIM_CARD_READ_ERR,
+    WM_SIM_INTERNET_ERR,
+    WM_TIME_SYNC_ERR,
+    WM_MQTT_CERTIFICATE_ERR,
+    WM_SERVER_CONNECTION_ERR,
+    WM_MQTT_SUBSCRIBE_ERR,
+
+} WM_LCD_ERR;
+
+/* RTC Control */
+
+/* MQTT Control */
+typedef enum
+{
+    SC_MQTT_RESULT_SUCCESS = 0,
+    SC_MQTT_RESULT_FAIL,
+    SC_MQTT_RESULT_BAD_UTF8_STR,
+    SC_MQTT_RESULT_SOCK_CONN_FAIL,
+    SC_MQTT_RESULT_SOCK_CREATE_FAIL,
+    SC_MQTT_RESULT_SOCK_CLOSE_FAIL, //5
+    SC_MQTT_RESULT_RCV_FAIL,
+    SC_MQTT_RESULT_NETWORK_OPEN_FAIL,
+    SC_MQTT_RESULT_NETWORK_CLOSE_FAIL,
+    SC_MQTT_RESULT_NETWORK_NO_OPEN,
+    SC_MQTT_RESULT_CLINET_INDEX_ERR, //10
+    SC_MQTT_RESULT_NO_CONNECTION,
+    SC_MQTT_RESULT_INVALID_PARAMETER,
+    SC_MQTT_RESULT_OPERATION_NOT_SUPPORT,
+    SC_MQTT_RESULT_BUSY,
+    SC_MQTT_RESULT_REQ_CONNECTION_FAIL, //15
+    SC_MQTT_RESULT_SOCK_SENDING_FAIL,
+    SC_MQTT_RESULT_TIMOUT,
+    SC_MQTT_RESULT_TOPIC_EMPTY,
+    SC_MQTT_RESULT_CLIENT_IN_USE,
+    SC_MQTT_RESULT_CLIENT_NOT_ACCQ, //20
+    SC_MQTT_RESULT_CLIENT_NOT_REL,
+    SC_MQTT_RESULT_EXCEED_MAX_VAL,
+    SC_MQTT_RESULT_NETWORK_HAVE_OPENED,
+    SC_MQTT_RESULT_PACKET_FAIL,
+    SC_MQTT_RESULT_DNS_ERROR,
+    SC_MQTT_RESULT_SOCK_CLOSE,// 26  socket closed by server
+    SC_MQTT_RESULT_UNACCEPTED_PROTOCOL_VER, //27 - connection refused: unaccepted protocol version
+    SC_MQTT_RESULT_ID_REJECTED, //28  - connection refused: identifier rejected
+    SC_MQTT_RESULT_SER_UNVAILBLE, //29  - connection refused: server unavailable
+    SC_MQTT_RESULT_BAD_USRNAME_PWD, //30 - connection refused: bad user name or password
+    SC_MQTT_RESULT_NOT_AUTHORIZED, // 31 - connection refused: not authorized
+    SC_MQTT_RESULT_SSL_HANDSHAKE_ERR, //32 for ssl
+    SC_MQTT_RESULT_NOT_SET_CERTS,//33 for ssl
+    SC_MQTT_RESULT_OPEN_SESSION_ERR,//34 for ssl
+    SC_MQTT_RESULT_DISCONN_FAIL,
+    SC_MQTT_RESULT_MAX
+}SCmqttResultType;
+
+typedef SCmqttResultType  SCmqttReturnCode;
+
+typedef enum {
+    SC_MQTT_OP_SET = 0,
+    SC_MQTT_OP_GET,
+}SCmqttOperationType;
+
+/* HTTP Control */
+
+/* Audio Control */
+typedef enum
+{
+    SAMPLE_RATE_8K = 0,
+    SAMPLE_RATE_16K,
+    SAMPLE_RATE_MAX
+}AUD_SampleRate;
+
+typedef enum
+{
+    AUDIO_VOLUME_MUTE = 0,
+    AUDIO_VOLUME_1,
+    AUDIO_VOLUME_2,
+    AUDIO_VOLUME_3,
+    AUDIO_VOLUME_4,
+    AUDIO_VOLUME_5,
+    AUDIO_VOLUME_6,
+    AUDIO_VOLUME_7,
+    AUDIO_VOLUME_8,
+    AUDIO_VOLUME_9,
+    AUDIO_VOLUME_10,
+    AUDIO_VOLUME_MAX
+} AUD_Volume;
+
+/* USB Control */
+
+/* File Control */
+typedef enum {
+    REPLACE_AND_DELETE = 0,
+    RETURN_IF_FILE_FOUND
+} WriteFileOption;
+
+/* Unzip */
+typedef enum
+{
+    WM_UNZ_FILE = 99,
+}WM_UNZIP_SELECTION;
+
+/* Timer Control*/
+
+#endif

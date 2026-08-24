@@ -1,0 +1,80 @@
+/**
+******************************************************************************
+* @file    wm_config.h
+* @author  Walnut Medical
+* @brief   Walnut system configuration.
+******************************************************************************
+* @attention
+*
+* Copyright (c) 2022 Walnut Medical.
+* All rights reserved.
+*
+******************************************************************************
+*/
+
+#ifndef __WM_CONFIG_H__
+#define __WM_CONFIG_H__
+
+/* System Available Debug Settings ------------------------------------------------------------------*/
+#define WM_DEBUG_DBG_UART_MODE  11
+#define WM_DEBUG_DEV_MODE       22
+#define WM_DEBUG_UAT_MODE		33
+#define WM_DEBUG_PROD_MODE		44
+
+/* System Available Log levels */
+#define WM_LOG_LEVEL_DEBUG     10  /* Detailed debug info for development */
+#define WM_LOG_LEVEL_INFO      20  /* General confirmation that things work */
+#define WM_LOG_LEVEL_WARNING   30  /* Something unexpected but not fatal */
+#define WM_LOG_LEVEL_ERROR     40  /* Serious issue; function failed but app continues */
+#define WM_LOG_LEVEL_CRITICAL  50  /* Severe error; app may not recover */
+
+/* System Available Battery Settings ------------------------------------------------------------------*/
+#define WM_BATTERY_2600_mAH		55
+#define WM_BATTERY_2000_mAH		66
+
+/* System Available PCB Settings ------------------------------------------------------------------*/
+#define WM_PCB_Z555				90
+#define WM_PCB_Z590_V1			91
+#define WM_PCB_Z590_V2			92
+#define WM_PCB_Z592_V1			93
+#define WM_PCB_Z588_V1_A		94
+#define WM_PCB_Z588_V1_B		95
+#define WM_PCB_Z585_V1  		96
+#define WM_PCB_Z596_V1			97
+#define WM_PCB_Z596_V1_EXP		98
+#define WM_PCB_Z550_V1		    99
+#define WM_PCB_Z602_V1      WM_PCB_Z588_V1_A
+#define WM_PCB_Z617_V2		    100
+#define WM_PCB_Z617_V2_P		101
+#define WM_PCB_Z594_V1          102
+#define WM_PCB_Z628_V1			103
+#define WM_EVAL_GPS_V1			104
+
+/* System Available SLEEP Settings ------------------------------------------------------------------*/
+#define WM_SLEEP_MODE_OFF		111
+#define WM_SLEEP_MODE_ON		222
+
+/* System Settings ------------------------------------------------------------------*/
+#define WM_CURRENT_DEBUG_MODE WM_DEBUG_DEV_MODE
+#define WM_CURRENT_LOG_LEVEL WM_LOG_LEVEL_DEBUG
+#define WM_CURRENT_BATTERY WM_BATTERY_2000_mAH
+#define WM_CURRENT_BOARD WM_EVAL_GPS_V1
+#define WM_CURRENT_SLEEP_MODE WM_SLEEP_MODE_ON
+
+#if(WM_CURRENT_BOARD == WM_PCB_Z628_V1)
+#define WM_EXT_CDC_SUPPORT  1
+#else
+#define WM_EXT_CDC_SUPPORT  0
+#endif
+
+/* GPS Settings ------------------------------------------------------------------*/
+#define WM_GPS_SUPPORT              1
+
+/* System Build Purpose ------------------------------------------------------------------*/
+#define WM_PROD_APP 77
+#define WM_UI_APP 88
+#define WM_LIB 99
+
+#define WM_BUILD_PURPOSE @WM_BUILD_PURPOSE@
+
+#endif/*__WM_CONFIG_H__*/

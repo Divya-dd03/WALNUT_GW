@@ -1,0 +1,138 @@
+{
+  "name": "ASR1605_SINGLE_FLASH_LAYOUT_OPEN_04MB_CP2",
+  "partitions": [
+    {
+      "name": "qspi",
+      "format": "flash",
+      "vstart": "0x80000000",
+      "partitions": [
+        {
+          "name": "bootloader",
+          "format": "ubi",
+          "size": "96KiB"
+        },
+        {
+          "name": "system",
+          "format": "part",
+          "size": "0",
+          "partitions": [
+            {
+              "name": "ptable",
+              "format": "raw",
+              "size": "4KiB"
+            },
+            {
+              "name": "fwcerts",
+              "format": "raw",
+              "size": "12KiB",
+              "disable": true
+            },
+            {
+              "name": "rd",
+              "format": "raw",
+              "size": "8KiB"
+            },
+            {
+              "name": "apn",
+              "format": "raw",
+              "size": "32KiB",
+              "disable": true
+            },
+            {
+              "name": "cp",
+              "format": "raw",
+              "size": "0"
+            }
+          ]
+        },
+        {
+          "name": "reserved",
+          "format": "raw",
+          "size": "-1"
+        },
+        {
+          "name": "nvm",
+          "format": "raw",
+          "size": "128KiB"
+        },
+        {
+          "name": "customer_app",
+          "format": "raw",
+          "size": "512KiB"
+        },
+        {
+          "name": "user_cfg",
+          "format": "raw",
+          "size": "12KiB"
+        },
+        {
+          "name": "fota_param",
+          "format": "raw",
+          "size": "12KiB"
+        },
+        {
+          "name": "fota_pkg",
+          "format": "raw",
+          "size": "4KiB",
+          "disable": true
+        },
+        {
+          "name": "factory",
+          "format": "part",
+          "size": "0",
+          "partitions": [
+            {
+              "name": "factory_user",
+              "format": "raw",
+              "size": "4KiB"
+            },	  
+            {
+              "name": "factory_a",
+              "format": "raw",
+              "size": "24KiB"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "spi",
+      "format": "flash",
+      "vstart": "0x90000000",
+      "partitions": [
+        {
+         "name": "updater",
+         "format": "raw",
+         "size": "136KiB"
+        },
+        {
+          "name": "system2",
+          "format": "part",
+          "size": "0",
+          "partitions": [
+          {
+             "name": "cp2",
+             "format": "raw",
+             "size": "1152KiB"          
+          },
+          {
+             "name": "dsp",
+             "format": "raw",
+             "size": "64KiB"
+          },
+          {
+             "name": "rfbin",
+             "format": "raw",
+             "size": "4KiB"
+          }
+      	]
+       },
+       {
+          "name": "cust_nvm",
+          "format": "raw",
+          "size": "-1"
+       }
+     ]
+    }      
+  ]
+}
