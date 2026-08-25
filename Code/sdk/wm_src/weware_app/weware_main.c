@@ -3,8 +3,13 @@
   * @file    weware_main.c
   * @author  WheelsEye
   * @brief   Application image entry point for the weware customer application.
-  *          appimg_enter() is invoked by the platform after boot to bring up
-  *          the system and start the weware application.
+  *          appimg_enter() is invoked by the platform after boot on the kernel
+  *          "app_load" task. That task's stack is small and kernel-owned, so
+  *          appimg_enter only bootstraps the system and spawns WEMAIN (the
+  *          application's own task, with its own stack), then returns - same
+  *          contract the vendor demo follows (WM_Entry_Task_Top_Most). Running
+  *          the app inline here overflows app_load's stack ("stack of app_load
+  *          overflow by itself" EE dump, or corruption asserts in other tasks).
   ******************************************************************************
   * @attention
   *
@@ -24,6 +29,10 @@
 #include "common/event_manager.h"
 #include "module/module_manager.h"
 #include "system/system_manager.h"
+
+/* Main application task: each sdk_log/wm_printf call alone costs ~1.3KB of
+ * stack (vsnprintf frames), and system/module init chains go deep. */
+#define WEWARE_MAIN_TASK_STACK   (1024 * 10)
 
 /* Log-level threshold used by the WM_LOG_* macros (defined in wm_src lib) */
 extern int g_wm_log_level;
@@ -80,26 +89,17 @@ static void weware_init(void)
         RTI_LOG("module_manager_init done");
 }
 
-int appimg_enter(void *param)
+/**
+ * @brief  Application main task (WEMAIN). Owns all weware init and the
+ *         supervision loop; runs on its own 8KB stack, never returns.
+ */
+static void weware_main_task(void *arg)
 {
-    sAPI_Debug("weware application image enter, param 0x%x", param);
-
-    wm_board_ID = WM_CURRENT_BOARD;
-    wm_battery_ID = WM_CURRENT_BATTERY;
-    wm_sleep_mode = WM_CURRENT_SLEEP_MODE;
-    RTI_LOG("Weware Application Boot Start");
-    if (wm_system_init() != SDK_RESULT_SUCCESS)
-        RTI_LOG("wm_system_init reported an error");
-    RTI_LOG("WM WEWARE SYSTEM INIT DONE ----------------------");
-
-    /* Unmute the USB VCOM log path (gf_debug flag). Without this, wm_printf
-     * and every sdk_log_* call return silently. sdk_log_init_uart() is just
-     * a wrapper for the same call - its port/config args are ignored. */
-    wm_logger_mode(TRUE);
+    (void)arg;
 
     weware_log_check();
 
-    /* Initialize weware components*/
+    /* Initialize weware components */
     weware_init();
 
     while (1)
@@ -117,6 +117,37 @@ int appimg_enter(void *param)
         }
 
         sdk_task_sleep(1000);
+    }
+}
+
+int appimg_enter(void *param)
+{
+    void *main_task;
+
+    sAPI_Debug("weware application image enter, param 0x%x", param);
+
+    wm_board_ID = WM_CURRENT_BOARD;
+    wm_battery_ID = WM_CURRENT_BATTERY;
+    wm_sleep_mode = WM_CURRENT_SLEEP_MODE;
+    RTI_LOG("Weware Application Boot Start");
+    if (wm_system_init() != SDK_RESULT_SUCCESS)
+        RTI_LOG("wm_system_init reported an error");
+    RTI_LOG("WM WEWARE SYSTEM INIT DONE ----------------------");
+
+    /* Unmute the USB VCOM log path (gf_debug flag). Redundant after
+     * wm_system_init (wm_pre_boot_init already sets it) but kept as
+     * explicit documentation of the logging gate. */
+    wm_logger_mode(TRUE);
+
+    /* Hand off to the application's own task and return: appimg_enter runs
+     * on the kernel app_load task, whose small stack must not host the app.
+     * The kernel logs "Customer APP exit code:0" once we return - that line
+     * in the boot log is the health check for this contract. */
+    main_task = sdk_task_create(weware_main_task, NULL, "WEMAIN", NULL,
+                                WEWARE_MAIN_TASK_STACK, TP_UI_TOP_THREAD);
+    if (main_task == NULL) {
+        RTI_LOG("FATAL: WEMAIN task create failed - application not started");
+        return -1;
     }
 
     return 0;

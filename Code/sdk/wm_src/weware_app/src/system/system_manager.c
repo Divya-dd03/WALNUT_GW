@@ -32,6 +32,14 @@
 #include "system/reset/reset_handler.h"
 #include "system/reset/post_boot_handler.h"
 #include "system/ota/ota_manager.h"
+
+/* OTA cycle (HTTPS version check + firmware download) master switch. Disabled
+ * while the cycle still runs inline on WEMAIN's stack - see the note at the
+ * ota_manager_check_and_update() call site. Re-enable with -DWEWARE_OTA_ENABLED=1
+ * once the cycle owns a TLS-sized task stack. */
+#ifndef WEWARE_OTA_ENABLED
+#define WEWARE_OTA_ENABLED 0
+#endif
 #include "system/time_utils.h"
 #include "weware_version.h"
 #include "module/module_manager.h"
@@ -245,11 +253,15 @@ Result system_manager_init(void)
         return RESULT_ERROR;
     }
 
+#if WEWARE_OTA_ENABLED
     {
         Result ota_r = ota_manager_init();
         if (ota_r != RESULT_SUCCESS && ota_r != RESULT_ALREADY_INITIALIZED)
             LOG_WARN("OTA manager init failed, continuing anyway");
     }
+#else
+    LOG_WARN("OTA manager disabled at compile time (WEWARE_OTA_ENABLED=0)");
+#endif
 
     if (reset_handler_init() != RESULT_SUCCESS) {
         LOG_WARN("Reset handler init failed, continuing anyway");
@@ -385,7 +397,13 @@ void system_manager_loop_iteration(void)
      * task already calls gps_ops_open_agps_if_needed()/agps_refresh_if_needed()
      * itself (gps_manager.c) - do not double-drive from here. */
 
+#if WEWARE_OTA_ENABLED
+    /* NOTE: runs the whole OTA cycle - including HTTPS/TLS version check and
+     * download - INLINE on the caller's (WEMAIN) stack. Confirmed to overflow
+     * an 8KB task stack; before re-enabling, move the OTA cycle to its own
+     * task with a TLS-sized stack (>=16KB) or enlarge WEMAIN's accordingly. */
     ota_manager_check_and_update();
+#endif
 
     if (utils_get_uptime_seconds() >= UPTIME_SOFT_RESET_THRESHOLD_SEC) {
         LOG_INFO("Uptime >= 24h, broadcasting soft reset");
