@@ -235,7 +235,7 @@ SdkResult weware_sim_query_modem_status(SdkSimStatus *status)
 
     if (result == SDK_RESULT_SUCCESS) {
         s_status_err_logged = false;
-        sdk_debug_print("SIM modem status=%d\r\n", (int)*status);
+        sdk_log_info("SIM modem status=%d\r\n", (int)*status);
         return SDK_RESULT_SUCCESS;
     }
 

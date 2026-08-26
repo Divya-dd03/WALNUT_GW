@@ -78,6 +78,32 @@ static SdkResult sdk_file_list_dir(const char *path,
     return SDK_RESULT_NOT_SUPPORTED;
 }
 
+/* Create the parent directory of @p path if it is missing.
+ * Returns TRUE if the parent now exists (so the caller should retry open). */
+static BOOL fs_ensure_parent_dir(const char *path)
+{
+    char        dir[64];
+    const char *slash = strrchr(path, '/');
+    size_t      len;
+
+    if (!slash)
+        return FALSE;
+    len = (size_t)(slash - path);
+    if (len < 3U || len + 1U > sizeof(dir))   /* need at least "C:/x" */
+        return FALSE;
+    memcpy(dir, path, len);
+    dir[len] = '\0';
+    if (strcmp(dir, "C:") == 0 || strcmp(dir, "C:/") == 0)
+        return FALSE;                           /* root always exists */
+
+    if (sdk_file_exists(dir) == SDK_RESULT_SUCCESS)
+        return FALSE;                           /* parent fine, open failed for another reason */
+
+    LOG_WARN("parent dir '%s' missing, creating", dir);
+    (void)sdk_file_mkdir(dir);
+    return (sdk_file_exists(dir) == SDK_RESULT_SUCCESS);
+}
+
 static Result file_system_do_delete(const char *path, const char *op_name)
 {
     if (!path) {
@@ -119,6 +145,14 @@ Result file_system_write_file(const char *path,
     LOG_INFO("write_file path='%s' len=%u", path, (unsigned)data_len);
 
     void *file = sdk_file_open(path, "wb+");
+    if (!file) {
+        /* Walnut: fs_open does not create parent directories. If the parent
+         * is one of our FLASH_DIR_* folders and is missing (e.g. first boot
+         * before/without flash_paths_ensure_directories), create it once and
+         * retry, so a single missing folder doesn't wedge persistence. */
+        if (fs_ensure_parent_dir(path))
+            file = sdk_file_open(path, "wb+");
+    }
     if (!file) {
         LOG_ERROR("write_file: open failed path='%s' mode=wb+", path);
         return RESULT_ERROR;

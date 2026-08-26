@@ -1,15 +1,6 @@
 /**
  * @file ota_manager.c
  * @brief OTA (Over-The-Air) update manager implementation
- *
- * WALNUT port scope (2026-08-24): SIMCOM (modem-application) OTA only, up to
- * the file download. Structure and kept code are verbatim from the reference
- * (common-gateway-1.5). Trimmed against the reference, marked WALNUT below:
- *  - ST + peripheral device paths (file_transfer / peri_ota not ported);
- *  - the network-stability and motion prerequisite gates (network_manager /
- *    command_config not ported);
- *  - the post-download EVENT_RESET_SOFT broadcast - the downloaded image is
- *    written to the app package and left staged (download-only scope).
  */
 
 #include <stdio.h>
@@ -31,6 +22,7 @@
 #include "config/config.h"
 #include "system/storage/flash_paths.h"
 #include "weware_version.h"
+#include "module/network/network.h"
 #include "system/ota/ota_manager.h"
 #include "system/ota/ota_file_download.h"
 
@@ -38,7 +30,7 @@
  * Log Configuration
  *--------------------------------------------------------------*/
 #define LOG_TAG "OTA"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 /*---------------------------------------------------------------
@@ -68,6 +60,7 @@ typedef struct
     BOOL imei_valid;               /* TRUE once imei[] has been populated */
     BOOL peri_in_progress;         /* TRUE while a multi-tick peripheral OTA cycle is running */
     BOOL force_active;             /* TRUE for a one-shot forced cycle: bypasses prereq + cooldown gates */
+    OtaDevice force_target;        /* Which device(s) a forced cycle targets; OTA_DEVICE_COUNT = all */
     BOOL session_active;           /* TRUE for the whole OTA session (download+transfer+peripheral) — blocks re-entry */
     BOOL st_in_progress;           /* TRUE while the ST file transfer runs; peripheral waits until it finishes */
     UINT8 st_last_reason;          /* OtaReason: last STM OTA outcome (field readback)  */
@@ -147,13 +140,13 @@ static void ota_version_remove_leading_zeros(const char *version, char *output, 
     {
         return;
     }
-
+    
     const char *ptr = version;
     while (*ptr == '0' && *(ptr + 1) != '\0')
     {
         ptr++;
     }
-
+    
     utils_strncpy_safe(output, ptr, output_size);
 }
 
@@ -172,10 +165,10 @@ static void ota_version_format_firmware(const char *version, char *output, size_
         utils_strncpy_safe(output, version, output_size);
         return;
     }
-
+    
     char version_no_zero[16] = {0};
     ota_version_remove_leading_zeros(version, version_no_zero, sizeof(version_no_zero));
-
+    
     if (strlen(version_no_zero) >= 2)
     {
         size_t remaining_len = strlen(&version_no_zero[1]);
@@ -201,10 +194,10 @@ static void ota_version_format_hardware(const char *version, char *output, size_
     {
         return;
     }
-
+    
     char version_no_zero[16] = {0};
     ota_version_remove_leading_zeros(version, version_no_zero, sizeof(version_no_zero));
-
+    
     if (strlen(version_no_zero) >= 2)
     {
         size_t remaining_len = strlen(&version_no_zero[1]);
@@ -313,7 +306,7 @@ static void ota_handle_network_connected(const EventData *event, void *user_data
 {
     (void)user_data;
     (void)event;
-
+    
     g_ota_state.network_connected = TRUE;
     LOG_INFO("OTA: Network connected event received");
 }
@@ -322,7 +315,7 @@ static void ota_handle_network_disconnected(const EventData *event, void *user_d
 {
     (void)user_data;
     (void)event;
-
+    
     g_ota_state.network_connected = FALSE;
     LOG_INFO("OTA: Network disconnected event received");
 }
@@ -331,7 +324,7 @@ static void ota_handle_gps_configured(const EventData *event, void *user_data)
 {
     (void)user_data;
     (void)event;
-
+    
     g_ota_state.gps_configured = TRUE;
     LOG_INFO("OTA: GPS configured event received");
 }
@@ -340,7 +333,7 @@ static void ota_handle_gps_disconnected(const EventData *event, void *user_data)
 {
     (void)user_data;
     (void)event;
-
+    
     //g_ota_state.gps_configured = FALSE;
     LOG_INFO("OTA: GPS disconnected event received");
 }
@@ -431,10 +424,10 @@ Result ota_manager_init(void)
         event_manager_unregister(EVENT_GPS_CONFIGURED, ota_handle_gps_configured);
         return RESULT_ERROR;
     }
-
+    
     g_ota_state.initialized = TRUE;
     LOG_INFO("OTA manager initialized and registered for events");
-
+    
     return RESULT_SUCCESS;
 }
 
@@ -444,7 +437,7 @@ Result ota_manager_deinit(void)
     {
         return RESULT_SUCCESS;
     }
-
+    
     event_manager_unregister(EVENT_NETWORK_CONNECTED, ota_handle_network_connected);
     event_manager_unregister(EVENT_NETWORK_DISCONNECTED, ota_handle_network_disconnected);
     event_manager_unregister(EVENT_GPS_CONFIGURED, ota_handle_gps_configured);
@@ -468,13 +461,13 @@ int ota_check_update_required(const char *firmware_version, const char *hardware
         LOG_DEBUG("OTA: check_update_required invalid parameters");
         return -1;
     }
-
+    
     if (upgrade_type != OTA_UPGRADE_SIMCOM && upgrade_type != OTA_UPGRADE_ST)
     {
         LOG_DEBUG("OTA: check_update_required invalid upgrade type %d", upgrade_type);
         return -1;
     }
-
+    
     /* Acquire the heap work buffers for this cycle (idempotent if already held). */
     if (!ota_buffers_acquire())
     {
@@ -533,7 +526,7 @@ int ota_check_update_required(const char *firmware_version, const char *hardware
 
 /*---------------------------------------------------------------
  * Main OTA Check Function
- *--------------------------------------------------------------*/
+ *-----------------------------------------\---------------------*/
 
 /**
  * @brief Check whether prerequisites are met to attempt an OTA right now.
@@ -558,11 +551,17 @@ static int ota_prerequisites_ok(void)
         LOG_DEBUG("Network not connected");
         return 0;
     }
-
+    
     /* Check GPS configuration */
     if (g_ota_state.gps_configured == FALSE)
     {
         LOG_DEBUG("GPS not configured");
+        return 0;
+    }
+
+    if (!weware_network_is_stable())
+    {
+        LOG_DEBUG("OTA skipped: network signal not stable");
         return 0;
     }
 
@@ -575,7 +574,7 @@ static int ota_prerequisites_ok(void)
 static int ota_check_cooldown(void)
 {
     UINT32 current_ticks = SDK_GET_TICKS();
-
+    
     if (g_ota_state.last_check_ticks != 0)
     {
         UINT32 elapsed_ms = utils_elapsed_ms_since(g_ota_state.last_check_ticks);
@@ -586,7 +585,7 @@ static int ota_check_cooldown(void)
             return 0;
         }
     }
-
+    
     g_ota_state.last_check_ticks = current_ticks;
     return 1;
 }
@@ -629,10 +628,25 @@ static int ota_process_simcom_update(const char *firmware_version, const char *h
 
 /* WALNUT: ota_process_st_update omitted - ST path not ported. */
 
+/*---------------------------------------------------------------
+ * OTA Orchestration — context, per-device handlers, dispatcher
+ *
+ * Layering (top → bottom):
+ *   ota_manager_check_and_update / ota_manager_run_device   (orchestrators)
+ *        → ota_dispatch                                     (prereq gate + routing)
+ *             → ota_run_simcom / ota_run_st / ota_run_peripheral  (handlers)
+ *                  → ota_process_* / peri_ota_run_tick      (existing logic)
+ *--------------------------------------------------------------*/
+
+/**
+ * @brief Resolve the per-cycle context: cache the IMEI once, attach fw/hw versions.
+ * @return TRUE if context is usable; FALSE if IMEI/version is not available yet.
+ */
 static BOOL ota_context_ensure(OtaContext *ctx)
 {
     if (!ctx)
     {
+        LOG_ERROR("OTA: context pointer is NULL");
         return FALSE;
     }
 
@@ -686,6 +700,7 @@ static OtaResult ota_dispatch(OtaDevice device, const OtaContext *ctx)
 {
     if (!ctx)
     {
+        LOG_ERROR("OTA: context pointer is NULL in dispatch");
         return OTA_RESULT_ERROR;
     }
 

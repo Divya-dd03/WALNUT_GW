@@ -18,6 +18,7 @@
 #define WEWARE_FLASH_PATHS_H
 
 #include "common/types.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,10 +52,23 @@ extern "C" {
  * system/device_utils.h - include that instead of defining it twice. */
 
 /**
- * @brief Create standard subdirectories if they do not exist (best-effort).
- * @note Uses @c sdk_file_exists + @c file_system_mkdir; ignores mkdir failure after exists check.
+ * @brief Create standard subdirectories if they do not exist.
+ * @note Walnut: directory names are passed to the kernel FS without the trailing '/'
+ *       (fs_makedir rejects it). Returns RESULT_ERROR if any directory is still missing.
  */
 Result flash_paths_ensure_directories(void);
+
+/**
+ * @brief Ensure a single directory exists (exists check -> mkdir -> verify).
+ * @param dir  Directory path, with or without trailing '/', e.g. @c FLASH_DIR_PREBOOT.
+ */
+Result flash_paths_ensure_directory(const char *dir);
+
+/**
+ * @brief Copy @p dir into @p out with trailing '/' removed (root "C:/" is kept).
+ * @return TRUE on success, FALSE on bad args / buffer too small.
+ */
+BOOL flash_paths_dir_no_slash(const char *dir, char *out, size_t out_size);
 
 #ifdef __cplusplus
 }

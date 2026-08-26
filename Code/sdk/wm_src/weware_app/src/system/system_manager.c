@@ -33,12 +33,11 @@
 #include "system/reset/post_boot_handler.h"
 #include "system/ota/ota_manager.h"
 
-/* OTA cycle (HTTPS version check + firmware download) master switch. Disabled
- * while the cycle still runs inline on WEMAIN's stack - see the note at the
- * ota_manager_check_and_update() call site. Re-enable with -DWEWARE_OTA_ENABLED=1
- * once the cycle owns a TLS-sized task stack. */
+/* OTA cycle (HTTPS version check + firmware download) master switch. Runs
+ * inline on WEMAIN like the reference; WEMAIN's stack is sized for the
+ * kernel HTTPS client (weware_main.c). Disable with -DWEWARE_OTA_ENABLED=0. */
 #ifndef WEWARE_OTA_ENABLED
-#define WEWARE_OTA_ENABLED 0
+#define WEWARE_OTA_ENABLED 1
 #endif
 #include "system/time_utils.h"
 #include "weware_version.h"
@@ -210,7 +209,7 @@ static void print_system_status(void)
         default: break;
     }
 
-    SDK_DEBUG_PRINT(
+    sdk_log_info(
         "WEWARE STATUS - Uptime: %lu:%02lu:%02lu | FW: %s | HW: %s | App: %s | SDK: WALNUT"
         " | Reset: %s (code:%lu) | Reboot: %s/%s #%lu | RAM: %s | Flash: %s | CPU: %s\r\n",
         (unsigned long)hours, (unsigned long)minutes, (unsigned long)secs,
@@ -398,10 +397,9 @@ void system_manager_loop_iteration(void)
      * itself (gps_manager.c) - do not double-drive from here. */
 
 #if WEWARE_OTA_ENABLED
-    /* NOTE: runs the whole OTA cycle - including HTTPS/TLS version check and
-     * download - INLINE on the caller's (WEMAIN) stack. Confirmed to overflow
-     * an 8KB task stack; before re-enabling, move the OTA cycle to its own
-     * task with a TLS-sized stack (>=16KB) or enlarge WEMAIN's accordingly. */
+    /* Reference call site. Runs the whole OTA cycle inline on WEMAIN: the
+     * version check is async on the kernel HTTPS worker; the ranged download
+     * helpers are synchronous (~16 KB stack) - WEMAIN is sized for it. */
     ota_manager_check_and_update();
 #endif
 

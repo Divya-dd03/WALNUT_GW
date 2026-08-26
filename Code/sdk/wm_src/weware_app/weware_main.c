@@ -31,8 +31,13 @@
 #include "system/system_manager.h"
 
 /* Main application task: each sdk_log/wm_printf call alone costs ~1.3KB of
- * stack (vsnprintf frames), and system/module init chains go deep. */
-#define WEWARE_MAIN_TASK_STACK   (1024 * 10)
+ * stack (vsnprintf frames), and system/module init chains go deep. The OTA
+ * cycle also runs inline here (reference structure): the HTTPS version check
+ * is async (request runs on the kernel worker), but sdk_https_read() needs
+ * ~8 KB and the kernel's synchronous ranged-download helpers
+ * (sdk_https_download_get_file_size/read_chunk) ~16 KB on the caller
+ * (sdk_https.h). 10 KB was confirmed to overflow with OTA enabled. */
+#define WEWARE_MAIN_TASK_STACK   (1024 * 24)
 
 /* Log-level threshold used by the WM_LOG_* macros (defined in wm_src lib) */
 extern int g_wm_log_level;

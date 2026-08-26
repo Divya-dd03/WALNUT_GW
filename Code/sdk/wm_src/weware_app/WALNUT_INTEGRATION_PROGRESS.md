@@ -2,7 +2,9 @@
 
 **Project:** WEGW_1605_4_RL — weware application on the walnut-ZX (GW1NS) SDK
 **Reference:** common-gateway 1.5 (`gateway_repos/v3/newArchMain/common-gateway-1.5/modem/firmware`)
-**Date:** 2026-08-20 · **Build:** ✅ green — all 38 weware_app objects compile, `customer_app.elf` links, signed `customer_app.bin` staged to `kernel/GW1NS-4`
+**Date:** 2026-08-26 · **Build:** ✅ green — all weware_app objects compile, `customer_app.elf` links, signed `customer_app.bin` staged to `kernel/GW1NS-4`
+
+**Latest change (2026-08-26) — storage fix:** on-target log showed `[FILESYS] E: write_file: open failed path='C:/preboot/weware_preboot.bin' mode=wb+` / `[PREBOOT] E: tcpq_clr ... ret=-1` repeating every loop. Root cause: `flash_paths_ensure_directories` (CG-verbatim) passed `FLASH_DIR_*` **with the trailing slash** (`"C:/preboot/"`) to `sdk_file_exists`/`sdk_file_mkdir`; on walnut these hit the kernel `fs_stat`/`fs_makedir` unmodified (via `wm_create_folder`) and the kernel FS rejects trailing-slash directory paths (the vendor libc wrapper `components/libc_wrap/c_wrap.c` strips it explicitly; vendor demo and `gps_storage` mkdir `"C:/wegwdir"`/`"C:/config"` without one). So none of `C:/config|fota|preboot|queue` were created and every write under them failed. Fix: `flash_paths.c` normalizes the name (`flash_paths_dir_no_slash`) → exists → mkdir → verify, and reports RESULT_ERROR + `[FLASHP]` log if a dir is still missing; `file_system_write_file` self-heals a missing parent dir once and retries the open. **Compiled + linked; on-target verification pending** (see §6).
 
 ---
 
@@ -47,6 +49,7 @@ The five reference files supplied (`module_config.c`, `module_manager.c`, `syste
 | `module/log/*` | CG `log.h` compile-time-filtered `LOG_*` macros kept; backend `log_printf` → `RTI_LOG` (AP UART console); async ring not ported |
 | `system/adc/adc_manager.c`, `system/gpio/gpio_manager.c` | New thin wrappers over `sdk_adc` / `sdk_gpio` |
 | `common/types.h` | CG `Result` enum (numerically compatible with `SdkResult`, so registry casts work as in CG) |
+| `system/storage/flash_paths.c`, `file_system.c` (2026-08-26) | **Walnut FS delta:** directory paths must reach `sdk_file_mkdir`/`sdk_file_exists` **without a trailing '/'** (kernel `fs_makedir` rejects it; SIMCOM tolerated it). `flash_paths_ensure_directory()` strips + verifies; `file_system_write_file` creates a missing parent dir once and retries. Abstraction note for Stage 2: this path normalization belongs in the walnut file adapter (`sdk_file_mkdir`/`sdk_file_exists` wrappers), not in CG business code. |
 
 **Integration wiring added:**
 - All five task loops (gps, urc, network, sim, tcp) feed `module_manager_update_uptime()` → main-loop stall watchdog broadcasts `EVENT_RESET_SOFT` (persisted reboot).
@@ -136,6 +139,7 @@ Command manager (SMS/TCP command handling — GPS/TCP/system config setters are 
 ## 6. Validation status
 
 - ✅ Compiles and links (GW1NS-4, XIP, 4 MB flash); image signed and staged.
+- ⬜ **Storage dirs (2026-08-26 fix, verify first):** boot log must show no `[FLASHP] E: ensure_dir` lines and no `[FILESYS] E: write_file: open failed path='C:/preboot/...'`; `[PREBOOT] E: tcpq_clr` spam gone; after a soft reset the `WEWARE STATUS` line reports `Reboot: SOFT/<module> #n` (preboot record round-trips); `C:/config/system_config.dat` and `C:/queue/*.dat` get created. First boot on an already-flashed unit was observed 2026-08-26 with dirs missing → this fix.
 - ⬜ On-target boot: verify module init pass, `WEWARE STATUS` line, `[ADC]` readings plausibility, config file creation on first boot, watchdog doesn't false-trigger (all five tasks feed uptime; loops iterate ≤1 s).
 - ⬜ Regression: GPS trigger cadence, TCP login/ACK against stage server, network reconnect ladder, reboot persistence (preboot record + GPS last-valid).
 - ⬜ TCP store-and-forward (new 2026-08-21): backlog accumulates while TCP down and drains in ≤5-row batches on reconnect; rows survive a soft reboot (TCP_SEND_Q snapshot); 100 s idle keepalive cycles the connection without wedging; login+GPS frame accepted by stage server (79 B).
