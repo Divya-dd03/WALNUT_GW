@@ -188,7 +188,7 @@ void sTask_WM_UIProcesser(void *arg)
         "19. HTTPS: Download file + verify SHA-256",
         "20. OTA: Show app + SDK version",
         "21. OTA: Download + verify + apply APP image",
-        "22. DFOTA: Download + verify + apply kernel patch",
+        "22. DFOTA: MINI FOTA kernel patch update (async result)",
         "23. UART",
         "24. FILE SYSTEM",
         "25. STORAGE (NVM)",
@@ -626,8 +626,7 @@ void sTask_WM_UIProcesser(void *arg)
             wm_ui_ota_version_demo();
             break;
 
-        /* Both prompt for a URL and a digest, so they run here on the dispatcher
-         * and hold the menu until the update finishes or fails. */
+        /* Both prompt, so they run here on the dispatcher and hold the menu. */
         case WM_DEMO_OTA_UPDATE:
             wm_ui_ota_update_demo();
             break;
@@ -992,5 +991,6 @@ void WM_Entry_Task_Top_Most(void)
     wm_logger_mode(TRUE);   /* enable log output                     */
 	sdk_gps_set_power_status(0);  /* GPS is off at startup          */
     wm_ui_app_init();       /* create WM_UI_msgq + UIPROC dispatcher */
+    wm_ui_dfota_init();     /* MINI FOTA status callback - register at boot */
     RTI_LOG("WEGW Common Gateway app: WM_Entry_Task_Top_Most done");
 }

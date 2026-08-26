@@ -39,7 +39,11 @@ void wm_ui_ota_version_demo(void);
  * Prompts, so it runs on the dispatcher and blocks the menu until it finishes. */
 void wm_ui_ota_update_demo(void);
 
-/* The same flow for the kernel delta patch (DFOTA). */
+/* Register the MINI FOTA result callback. Call once at start-up. */
+void wm_ui_dfota_init(void);
+
+/* DFOTA (kernel patch) over MINI FOTA: prompt for the URL, hand it to the
+ * module. The outcome arrives on the wm_ui_dfota_init() callback. */
 void wm_ui_dfota_update_demo(void);
 
 #ifdef __cplusplus

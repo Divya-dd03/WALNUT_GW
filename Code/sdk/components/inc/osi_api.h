@@ -70,6 +70,13 @@ typedef enum{
 typedef void (*RadioStateCallback)(drvRadioState_e state);
 void RadioStateSetCallback(RadioStateCallback callback);
 
+#define FOTA_MINI_ERR_PARAM    -1   /* URL missing, empty or too long */
+#define FOTA_MINI_ERR_NET      -2   /* no SIM / not registered / PDP not active */
+#define FOTA_MINI_ERR_PACKAGE  -3   /* integrity, wrong patch base, wrong target */
+
+typedef void (*miniFotaResultCallback)(int status);
+void miniFotaResultSetCallback(miniFotaResultCallback callback);
+
 /**
  * pointer to thread handle
  */

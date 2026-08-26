@@ -77,6 +77,11 @@
           "size": "448KiB"
         },
         {
+          "name": "user_cfg",
+          "format": "raw",
+          "size": "12KiB"
+        },
+        {
           "name": "fota_param",
           "format": "raw",
           "size": "12KiB"

@@ -4,32 +4,22 @@
   * @author  Walnut Medical
   * @brief   Common Gateway (WEGW) reference application - OTA / DFOTA demos.
   *
-  *          Three menu handlers over the sdk_ota_* API:
+  *          Three menu handlers:
   *
   *            versions  read the application and platform SDK version, and
   *                      report what is currently staged
-  *            OTA       one option for a whole application update
-  *            DFOTA     the same for a kernel delta patch
+  *            OTA       whole application update over the sdk_ota_*
+  *                      file-staging API: prompt for the URL -> download to
+  *                      C: -> prompt for SHA-256 -> verify -> arm -> restart
+  *            DFOTA     kernel delta patch over MINI FOTA
+  *                      (sdk_ota_mini_dfota_*): prompt for the URL and hand
+  *                      it to the module, which fetches and applies it
+  *                      itself over HTTP - no local staging or verify
   *
-  *          Each update option runs the complete sequence, prompting for the two
-  *          things that cannot be compiled in:
+  *          MINI FOTA needs kernel g496 or newer.
   *
-  *            prompt for the image URL
-  *              -> sdk_ota_download_* : ranged HTTPS fetch into C: staging
-  *            prompt for the expected SHA-256
-  *              -> sdk_ota_get_image_hash + sdk_ota_verify_image
-  *            -> sdk_ota_app_update / sdk_ota_dfota_update  (arm the bootloader)
-  *            -> the matching _restart() to reboot into the update
-  *
-  *          Because the flow prompts, it runs on the "UIPROC" dispatcher - the
-  *          task that owns the console - and the menu is unavailable until it
-  *          finishes. A full image is hundreds of kilobytes fetched a range at a
-  *          time, so expect the download step to take minutes.
-  *
-  *          Neither option will arm an image whose digest does not match. Nothing
-  *          below this layer checks the image: the vendor's own validity call is
-  *          declared but not linkable on this platform, so this SHA-256 step is
-  *          the only thing standing between a corrupt download and a brick.
+  *          Both options prompt, so they run on the "UIPROC" dispatcher and
+  *          hold the menu until answered (OTA also blocks for the download).
   ******************************************************************************
   * @attention
   *
@@ -259,10 +249,10 @@ static BOOL wm_ota_verify(UINT32 type, const char *expected)
     return FALSE;
 }
 
-/* The whole update flow, shared by both options: the only differences are which
- * image type is being handled and which pair of apply calls to make. */
-static void wm_ota_run_update(UINT32 type, const char *label)
+/* The APP image update flow: download to C: staging, verify, arm, reboot. */
+static void wm_ota_run_update(void)
 {
+    const UINT32 type = (UINT32)SDK_OTA_IMAGE_APP;
     SIM_MSG_T msg;
     char      expected[SDK_OTA_SHA256_HEX_LEN + 1] = {0};
     SdkResult rc;
@@ -305,29 +295,25 @@ static void wm_ota_run_update(UINT32 type, const char *label)
     /* --- 4. Verify ------------------------------------------------------- */
     if (!wm_ota_verify(type, expected))
     {
-        wm_printf("refusing to apply an unverified %s image\r\n", label);
+        wm_printf("refusing to apply an unverified APP_OTA image\r\n");
         return;
     }
 
     /* --- 5. Arm ---------------------------------------------------------- */
-    rc = (type == (UINT32)SDK_OTA_IMAGE_KERNEL) ? sdk_ota_dfota_update()
-                                                : sdk_ota_app_update();
+    rc = sdk_ota_app_update();
     if (rc != SDK_RESULT_SUCCESS)
     {
-        wm_printf("%s FAILED -> rc=%ld (nothing applied, no reboot)\r\n",
-                  label, (long)rc);
+        wm_printf("APP_OTA FAILED -> rc=%ld (nothing applied, no reboot)\r\n",
+                  (long)rc);
         return;
     }
 
-    wm_printf("%s SUCCESS - rebooting into the update now\r\n", label);
+    wm_printf("APP_OTA SUCCESS - rebooting into the update now\r\n");
 
     /* --- 6. Reboot ------------------------------------------------------- */
     sdk_task_sleep(200);   /* let the console drain before the reset */
 
-    if (type == (UINT32)SDK_OTA_IMAGE_KERNEL)
-        sdk_ota_dfota_restart();
-    else
-        sdk_ota_app_update_restart();
+    sdk_ota_app_update_restart();
 
     /* Not reached. */
     wm_printf("restart did not take effect\r\n");
@@ -352,8 +338,8 @@ void wm_ui_ota_version_demo(void)
     wm_printf("sdk version: %s\r\n",
               (rc == SDK_RESULT_SUCCESS) ? sdk : "<unavailable>");
 
+    /* MINI FOTA stages no local file, so only the APP image has a path. */
     wm_ota_report_staged((UINT32)SDK_OTA_IMAGE_APP);
-    wm_ota_report_staged((UINT32)SDK_OTA_IMAGE_KERNEL);
 }
 
 /*******************************************************************************
@@ -364,16 +350,55 @@ void wm_ui_ota_update_demo(void)
     wm_printf("\r\n**** WM OTA: download + verify + apply APP image ****\r\n");
     wm_printf("the image must be the signed customer_app.bin, not a raw build\r\n");
 
-    wm_ota_run_update((UINT32)SDK_OTA_IMAGE_APP, "APP_OTA");
+    wm_ota_run_update();
 }
 
 /*******************************************************************************
-** DFOTA - kernel delta patch
+** DFOTA - kernel patch, MINI FOTA (module-driven HTTP fetch)
 ******************************************************************************/
+/* Kernel callback context, possibly a later boot - keep it short. */
+static void wm_ui_dfota_status_cb(int status)
+{
+    if (status == 0)
+        wm_printf("\r\n[DFOTA] MINI FOTA result: SUCCESS\r\n");
+    else
+        wm_printf("\r\n[DFOTA] MINI FOTA result: FAILED (status=%d)\r\n", status);
+}
+
+void wm_ui_dfota_init(void)
+{
+    (void)sdk_ota_mini_dfota_init(wm_ui_dfota_status_cb);
+}
+
 void wm_ui_dfota_update_demo(void)
 {
-    wm_printf("\r\n**** WM DFOTA: download + verify + apply kernel patch ****\r\n");
-    wm_printf("the patch is the adiff output from wm_tools/wm_dfota_tool\r\n");
+    SIM_MSG_T msg;
+    int       rc;
 
-    wm_ota_run_update((UINT32)SDK_OTA_IMAGE_KERNEL, "DFOTA");
+    wm_printf("\r\n**** WM DFOTA: MINI FOTA kernel patch update ****\r\n");
+    wm_printf("the patch is the adiff MINI output (system_patch.bin)\r\n");
+    wm_printf("the module applies it itself and reboots - keep it powered; the "
+              "result prints here later\r\n");
+
+    if (!gf_pdp_ready)
+        wm_printf("note: no PDP context is up, so this will fail\r\n");
+
+    wm_printf("NOTE: uncheck \"send with \\r\\n\" in the SPT tool before sending "
+              "the link\r\n\r\n");
+
+    msg = wm_ota_prompt("Enter download link of the MINI FOTA patch: ");
+    if (msg.arg3 == NULL)
+    {
+        wm_printf("\r\nno link entered\r\n");
+        return;
+    }
+    wm_printf("\r\n%s\r\n", (char *)msg.arg3);
+
+    rc = sdk_ota_mini_dfota_start((const char *)msg.arg3);
+    sdk_memory_free(msg.arg3);
+
+    if (rc == WM_MINI_FOTA_OK)
+        wm_printf("MINI FOTA request ACCEPTED - running in the background\r\n");
+    else
+        wm_printf("MINI FOTA request FAILED -> rc=%d\r\n", rc);
 }

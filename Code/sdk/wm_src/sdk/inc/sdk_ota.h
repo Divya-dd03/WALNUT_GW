@@ -13,9 +13,12 @@
  *            2. VERIFY    sdk_ota_verify_image() checks the staged file against
  *                         an expected SHA-256. Nothing else validates the image,
  *                         so skipping this stage means flashing unchecked bytes.
- *            3. APPLY     sdk_ota_app_update() / sdk_ota_dfota_update() arm the
- *                         bootloader, then the matching _restart() call reboots
- *                         into the update.
+ *            3. APPLY     sdk_ota_app_update() arms the bootloader, then
+ *                         sdk_ota_app_update_restart() reboots into the update.
+ *
+ *          This file-staging flow applies to the application image only. The
+ *          kernel delta patch (DFOTA) is not applied this way on this platform
+ *          - see sdk_ota_mini_dfota_init()/_start() below.
  *
  *          Transport and staging are built on the SDK's own HTTPS and file APIs:
  *          the download is a sequence of ranged GETs on the reserved
@@ -280,19 +283,33 @@ SdkResult sdk_ota_app_update(void);
  */
 void sdk_ota_app_update_restart(void);
 
+/*******************************************************************************
+** MINI FOTA - the DFOTA (kernel patch) path on this platform. The module
+** fetches and applies the package itself over HTTP; nothing is staged or
+** verified locally. It reboots mid-upgrade, so the outcome arrives on the
+** callback - typically on a LATER boot than the _start() that triggered it.
+******************************************************************************/
 /**
- * @brief  Arm the bootloader to install the staged kernel delta patch (DFOTA) on
- *         the next boot. Does not reboot: call sdk_ota_dfota_restart() to do that.
- * @return SdkResult - 0 success; SDK_RESULT_ERROR if no patch is staged or the
- *                     bootloader could not be armed.
+ * @brief  Upgrade outcome. 'status' is 0 on success, else a module error code
+ *         (raw, not an SdkResult). Runs in kernel callback context: keep it
+ *         short, do not start another upgrade from inside it.
  */
-SdkResult sdk_ota_dfota_update(void);
+typedef void (*SdkOtaMiniDfotaCb)(int status);
 
 /**
- * @brief  Reboot into the kernel update armed by sdk_ota_dfota_update().
- *         Does not return.
+ * @brief  Register the MINI FOTA result callback ('cb' may be NULL to only
+ *         log the result). Call once during start-up; idempotent.
+ * @return SdkResult - 0 success.
  */
-void sdk_ota_dfota_restart(void);
+SdkResult sdk_ota_mini_dfota_init(SdkOtaMiniDfotaCb cb);
+
+/**
+ * @brief  Start a MINI FOTA upgrade of the package at 'url'. Returns once the
+ *         module has ACCEPTED the request - "started", not "upgraded".
+ * @param  url  package URL, at most WM_MINI_FOTA_URL_MAX-1 characters.
+ * @return 0 on acceptance; else a negative module error code, NOT an SdkResult.
+ */
+int sdk_ota_mini_dfota_start(const char *url);
 
 /*******************************************************************************
 ** Versions
