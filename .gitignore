@@ -13,3 +13,15 @@ TODO*
 !/Tools/aboot/config
 !/Tools/aboot/images
 Code/sdk/__pycache__
+
+
+#app
+
+#logs
+*.log
+*.txt
+*.csv
+*.tsv
+
+instructions.md
+.progress_meta

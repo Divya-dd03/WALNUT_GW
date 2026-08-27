@@ -12,10 +12,12 @@
 #include "common/utils.h"
 #include "module/module_manager.h"
 #include "common/queue_manager.h"
+#ifndef UART_UNAVAILABLE
 #include "module/uart/uart_manager.h"
+#endif /* UART_UNAVAILABLE */
 #include "module/gps/gps_config.h"
 #include "module/network/network_config.h"
-#include "module/tcp/tcp_client_config.h"
+#include "module/tcp/tcp.h"
 
 #include "sdk_platform.h"
 #include "functionality/sdk_functionality_os.h"
@@ -26,6 +28,8 @@
 #include "ctype.h"
 #include "strings.h"
 #include <stddef.h>
+
+#include "sdk_log.h"
 
 /*---------------------------------------------------------------
  * Log Configuration
@@ -101,8 +105,8 @@ const cmd_handler_entry_t g_cmd_table[] = {   // Command handler table - add new
     {CMD_GET_GPS_CONFIG, "GET-GPS-CONFIG", FALSE, "Get GPS configuration", (module_func_t)gps_config_get_string},
     {CMD_SET_NETWORK_CONFIG, "SET-NETWORK-CONFIG", TRUE, "Set Network configuration", (module_func_t)network_config_set},
     {CMD_GET_NETWORK_CONFIG, "GET-NETWORK-CONFIG", FALSE, "Get Network configuration", (module_func_t)network_config_get_string},
-    {CMD_SET_TCP_CONFIG, "SET-TCP-CONFIG", TRUE, "Set TCP configuration", (module_func_t)tcp_config_set},
-    {CMD_GET_TCP_CONFIG, "GET-TCP-CONFIG", FALSE, "Get TCP configuration", (module_func_t)tcp_config_get_string},
+    {CMD_SET_TCP_CONFIG, "SET-TCP-CONFIG", TRUE, "Set TCP configuration", (module_func_t)weware_tcp_config_set},
+    {CMD_GET_TCP_CONFIG, "GET-TCP-CONFIG", FALSE, "Get TCP configuration", (module_func_t)weware_tcp_config_get_string},
     {CMD_SET_COMMAND_CONFIG, "SET-COMMAND-CONFIG", TRUE, "Set Command configuration", (module_func_t)command_config_set},
     {CMD_GET_COMMAND_CONFIG, "GET-COMMAND-CONFIG", TRUE, "Get Command configuration", (module_func_t)command_config_get_string},
     {CMD_SET_SYSTEM_CONFIG, "SET-SYSTEM-CONFIG", TRUE, "Set System (ign/motion) configuration", (module_func_t)system_config_set},
@@ -265,6 +269,11 @@ static Result cmd_process_command(const ModuleMessage* request, char* response_b
      * which the generic execute handler does not receive. Arm the UART ping test here
      * and reply with an immediate ack; the OK/FAIL verdict follows from the UART task. */
     if (cmd_ctx.cmd_enum == CMD_PING_STM) {
+        #ifdef UART_UNAVAILABLE
+        sdk_log_info("PING-STM received from module %u, address %s: UART unavailable",
+                     (unsigned)request->source_module, request->address);
+        snprintf(response_buffer, buffer_size, "ERROR: PING-STM unavailable (UART module not present)");
+        #else
         Result pr = uart_manager_start_ping_test(request->source_module, request->address);
         if (pr == RESULT_SUCCESS) {
             snprintf(response_buffer, buffer_size, "PING-STM started (result to follow, up to 15s)");
@@ -273,6 +282,7 @@ static Result cmd_process_command(const ModuleMessage* request, char* response_b
         } else {
             snprintf(response_buffer, buffer_size, "ERROR: PING-STM could not start");
         }
+        #endif /* UART_UNAVAILABLE */
         cmd_state_handle_update_stats(RESULT_SUCCESS);
         return RESULT_SUCCESS;
     }
@@ -367,7 +377,7 @@ Result command_manager_deinit(void)
     memset(&g_command_manager.task_stats, 0, sizeof(g_command_manager.task_stats));
     g_command_manager.module = NULL;
     g_command_manager.initialized = FALSE;
-    LOG_INFO("Command manager stopped");
+    sdk_log_info("Command manager stopped");
     return RESULT_SUCCESS;
 }
 
@@ -382,7 +392,7 @@ Result command_manager_init(void)
 
     g_command_manager.module = g_modules[MODULE_ID_CMD];
     if (!g_command_manager.module) {
-        LOG_ERROR("Command manager module not found");
+        sdk_log_error("Command manager module not found");
         return RESULT_ERROR;
     }
 
@@ -398,7 +408,7 @@ Result command_manager_init(void)
 
     if (queue_manager_create(&g_command_manager.module->config.msg_q_config,
                              &g_command_manager.module->config.msg_q) != RESULT_SUCCESS) {
-        LOG_ERROR("Command queue create failed");
+        sdk_log_error("Command queue create failed");
         return RESULT_ERROR;
     }
 
@@ -412,7 +422,7 @@ Result command_manager_init(void)
                                                  sizeof(g_command_manager.task_stack),
                                                  5);
     if (!g_command_manager.task_ref) {
-        LOG_ERROR("Command task create failed");
+        sdk_log_error("Command task create failed");
         queue_manager_destroy(g_command_manager.module->config.msg_q,
                               &g_command_manager.module->config.msg_q_config);
         g_command_manager.module->config.msg_q = NULL;
@@ -420,6 +430,6 @@ Result command_manager_init(void)
     }
 
     g_command_manager.initialized = TRUE;
-    LOG_INFO("Command manager ready");
+    sdk_log_info("Command manager ready");
     return RESULT_SUCCESS;
 }

@@ -76,9 +76,9 @@ target_sources(${target} PRIVATE
     # urc
     weware_app/src/module/urc/urc_processor.c
     # command
-    # weware_app/src/module/command/command_config.c
-    # weware_app/src/module/command/command_handler.c
-    # weware_app/src/module/command/command_manager.c
+    weware_app/src/module/command/command_config.c
+    weware_app/src/module/command/command_handler.c
+    weware_app/src/module/command/command_manager.c
     # system framework
     weware_app/src/system/system_manager.c
     weware_app/src/system/system_config.c

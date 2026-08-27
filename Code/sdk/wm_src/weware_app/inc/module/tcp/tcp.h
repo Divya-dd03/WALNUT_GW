@@ -57,9 +57,6 @@ typedef struct {
  * config_load_from_file can fill it before weware_tcp_init runs. */
 extern WewareTcpConfig g_tcp_config;
 
-/* Notified on every received TCP payload (runs on the TCP task) */
-typedef void (*weware_tcp_rx_cb_t)(const char *data, int len);
-
 /*---------------------------------------------------------------
  * Public API (state machine - tcp.c)
  *--------------------------------------------------------------*/
@@ -109,12 +106,6 @@ SdkResult weware_tcp_send(const void *data, UINT16 len);
  * @return SDK_RESULT_SUCCESS.
  */
 SdkResult weware_tcp_reset_connection(void);
-
-/**
- * @brief  Register a callback for received TCP payloads (one slot;
- *         pass NULL to unregister).
- */
-void weware_tcp_register_rx_callback(weware_tcp_rx_cb_t callback);
 
 /*---------------------------------------------------------------
  * Public API (configuration - tcp_config.c)

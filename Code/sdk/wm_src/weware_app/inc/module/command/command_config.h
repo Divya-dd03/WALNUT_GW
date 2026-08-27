@@ -8,6 +8,26 @@
 
 #include "common/types.h"
 
+/**
+ * @brief UART module is not yet ported on the Walnut gateway.
+ * While defined, the command module compiles without the UART manager:
+ * "STM:" prefixed commands and PING-STM reply "unavailable" instead of
+ * routing to the UART task. Remove this define (or define it from the
+ * build system) once module/uart is integrated.
+ */
+#ifndef UART_UNAVAILABLE
+#define UART_UNAVAILABLE
+#endif
+
+/**
+ * @brief Relay digout manager (system/gpio/digout_manager) is not yet ported
+ * on the Walnut gateway (see TODO(digout) in system_manager.c). While defined,
+ * the DIGOUT command replies "unavailable" and GET-DEVICE-INFO reports digout=0.
+ */
+#ifndef DIGOUT_UNAVAILABLE
+#define DIGOUT_UNAVAILABLE
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

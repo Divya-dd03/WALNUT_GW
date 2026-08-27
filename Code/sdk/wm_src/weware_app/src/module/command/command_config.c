@@ -21,6 +21,8 @@
 #define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
 #include "module/log/log.h"
 
+#include "sdk_log.h"
+
 static const ConfigKeyMap s_cmd_cfg_keys[] = {
     { "auth-en",       0 },
     { "pass",          1 },
@@ -48,7 +50,7 @@ Result command_config_validate(const void *config)
     
     if (strlen(cmd_cfg->auth_password) == 0 || strlen(cmd_cfg->auth_password) >= sizeof(cmd_cfg->auth_password))
     {
-        LOG_ERROR("Invalid auth_password length");
+        sdk_log_error("Invalid auth_password length");
         return RESULT_INVALID_PARAM;
     }
     
@@ -60,7 +62,7 @@ CommandConfig *command_config_get_storage(void)
     const ModuleConfig *module_config = module_manager_get_config(MODULE_ID_CMD);
     if (!module_config || !module_config->config_ptr)
     {
-        LOG_ERROR("Command module config not found");
+        sdk_log_error("Command module config not found");
         return NULL;
     }
     return (CommandConfig *)module_config->config_ptr;
@@ -71,7 +73,7 @@ Result command_config_set(const char *config_string)
 {
     if (!config_string || strlen(config_string) == 0)
     {
-        LOG_ERROR("Invalid config_string: NULL or empty");
+        sdk_log_error("Invalid config_string: NULL or empty");
         return RESULT_INVALID_PARAM;
     }
     
@@ -79,7 +81,7 @@ Result command_config_set(const char *config_string)
     const ModuleConfig *module_config = module_manager_get_config(MODULE_ID_CMD);
     if (!module_config || !module_config->config_ptr)
     {
-        LOG_ERROR("Command module not initialized or config not available");
+        sdk_log_error("Command module not initialized or config not available");
         return RESULT_INVALID_PARAM;
     }
     
@@ -89,7 +91,7 @@ Result command_config_set(const char *config_string)
     char *str_copy = utils_strdup_for_tokenization(config_string);
     if (!str_copy)
     {
-        LOG_ERROR("Failed to allocate memory for config string");
+        sdk_log_error("Failed to allocate memory for config string");
         return RESULT_ERROR;
     }
     
@@ -120,7 +122,7 @@ Result command_config_set(const char *config_string)
         current_index = utils_config_key_to_index(key_buf, s_cmd_cfg_keys,
                                                   sizeof(s_cmd_cfg_keys) / sizeof(s_cmd_cfg_keys[0]));
         if (current_index < 0) {
-            LOG_ERROR("Unknown Command config key: %s", key_buf);
+            sdk_log_error("Unknown Command config key: %s", key_buf);
             result = RESULT_INVALID_PARAM;
             break;
         }
@@ -142,7 +144,7 @@ Result command_config_set(const char *config_string)
             }
             else
             {
-                LOG_ERROR("Invalid auth_enable: %s (must be TRUE/FALSE/1/0)", value_str);
+                sdk_log_error("Invalid auth_enable: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = RESULT_INVALID_PARAM;
             }
             break;
@@ -153,7 +155,7 @@ Result command_config_set(const char *config_string)
             size_t pass_len = strlen(value_str);
             if (pass_len == 0 || pass_len >= sizeof(temp_auth_password))
             {
-                LOG_ERROR("Invalid auth_password length: %zu (must be 1-%zu)", 
+                sdk_log_error("Invalid auth_password length: %zu (must be 1-%zu)", 
                          pass_len, sizeof(temp_auth_password) - 1);
                 result = RESULT_INVALID_PARAM;
             }
@@ -169,7 +171,7 @@ Result command_config_set(const char *config_string)
             char *end = NULL;
             long v = strtol(value_str, &end, 10);
             if (end == value_str || *end != '\0' || v < 0 || v > 31) {
-                LOG_ERROR("Invalid min-csq: %s (must be 0-31, 0=disabled)", value_str);
+                sdk_log_error("Invalid min-csq: %s (must be 0-31, 0=disabled)", value_str);
                 result = RESULT_INVALID_PARAM;
             } else {
                 temp_min_csq = (UINT8)v;
@@ -183,7 +185,7 @@ Result command_config_set(const char *config_string)
             else if (strcasecmp(value_str, "FALSE") == 0 || strcmp(value_str, "0") == 0)
                 temp_adoc_net_task_flag = FALSE;
             else {
-                LOG_ERROR("Invalid adoc-net-task: %s (must be TRUE/FALSE/1/0)", value_str);
+                sdk_log_error("Invalid adoc-net-task: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = RESULT_INVALID_PARAM;
             }
             break;
@@ -215,11 +217,11 @@ Result command_config_set(const char *config_string)
         Result save_result = config_save_to_file(NULL);
         if (save_result == RESULT_SUCCESS)
         {
-            LOG_DEBUG("Command configuration saved to file");
+            sdk_debug_print("Command configuration saved to file");
         }
         else
         {
-            LOG_WARN("Failed to save Command configuration to file");
+            sdk_log_warning("Failed to save Command configuration to file");
         }
     }
     
@@ -238,7 +240,7 @@ Result command_config_get_string(char *buffer, size_t buffer_size)
     const ModuleConfig *module_config = module_manager_get_config(MODULE_ID_CMD);
     if (!module_config || !module_config->config_ptr)
     {
-        LOG_ERROR("Command module not initialized or config not available");
+        sdk_log_error("Command module not initialized or config not available");
         return RESULT_INVALID_PARAM;
     }
     
@@ -254,13 +256,13 @@ Result command_config_get_string(char *buffer, size_t buffer_size)
     /* Check if buffer was large enough */
     if (len < 0)
     {
-        LOG_ERROR("Failed to format Command config string");
+        sdk_log_error("Failed to format Command config string");
         return RESULT_ERROR;
     }
     
     if ((size_t)len >= buffer_size)
     {
-        LOG_ERROR("Buffer too small for Command config string (needed %d, got %zu)", len, buffer_size);
+        sdk_log_error("Buffer too small for Command config string (needed %d, got %zu)", len, buffer_size);
         return RESULT_ERROR;
     }
     

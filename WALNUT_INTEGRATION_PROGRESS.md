@@ -14,13 +14,14 @@
 |---|---|---|---|
 | System infra (events, queues, config store, module framework, reset, storage, time) | ✅ 2026-08-20 | Near-verbatim via compat shims | Board pins / ADC channels unconfirmed |
 | GPS (manager, ops, triggers, config, packet, storage, NMEA parse) | ✅ 2026-08-21 | Triggers/packet/storage/NMEA-parse ~100 % logic parity (HDOP + RMC/GGA cross-check live) | 5 packet fields placeholder; msg_q/BLE append dead |
-| TCP (state machine, ops, login, socket layer) | ✅ 2026-08-21 | 15-state FSM + login packet + store-and-forward send path full parity | Recv side goes to rx callback (command manager not ported) |
+| TCP (state machine, ops, login, socket layer) | ✅ 2026-08-21 | 15-state FSM + login packet + store-and-forward send path full parity; recv → command_manager (CG-verbatim, 2026-08-27) | Not runtime-tested over TCP |
 | Network (16-state manager, config, health check) | ✅ 2026-08-21 | State enum, 4-way health check, timeout table, EVENT_RESET_SOFT escalation, NetworkConfig persistence — CG parity | state_timeout framework hand-rolled; CFUN settle 2+3 s vs CG 1 s |
 | SIM (detect + debounce, events) | ✅ 2026-08-21 | Debounce verbatim; EVENT_SIM_* broadcasts + connected tracking | CPIN-4/6 removal detection (CG network_ops) not ported |
 | URC processor | ✅ 2026-08-21 | Drain loop + fan-out (CG pattern on bare event codes) | SMS inlining / NMEA assembler moot (kernel emits no such URCs) |
 | Vehicle state (ign/motion debounce) | ✅ 2026-08-20 | Logic verbatim | Accelerometer inputs stubbed FALSE |
 | Main / boot flow | ✅ 2026-08-20 | CG structure (system → modules → supervised loop) | Init failures log-and-continue (CG reboots) |
-| Command manager, SMS, UART, BLE, OTA, digout, accel, file-transfer | ❌ not ported | — | See §5 |
+| Command manager (manager, handler, config) | ✅ 2026-08-26 compiled | CG command table + waterfall state machine verbatim; API renamed to walnut (`weware_tcp_*`, `weware_sim_*`, `weware_network_*`) | UART (`STM:` prefix, PING-STM) and DIGOUT compile-gated out via `UART_UNAVAILABLE` / `DIGOUT_UNAVAILABLE` in `command_config.h`; not runtime-tested; not yet wired to SMS/TCP rx |
+| SMS, UART, BLE, OTA, digout, accel, file-transfer | ❌ not ported | — | See §5 |
 
 ---
 
@@ -90,7 +91,7 @@ The five reference files supplied (`module_config.c`, `module_manager.c`, `syste
   - `login_with_gps` appends last-valid GPS to the login (buffer 64→79 B).
   - `SENDING_DATA` 100 s keepalive restored (idle queue cycles the connection, CG parity; `reset_overall` now FALSE like CG).
 - **Still missing vs CG:**
-  1. Recv side routes to `weware_tcp_register_rx_callback` instead of CG's command_manager (not ported); command/BLE response path (`utils_route_response_to_module`) now reaches the queue but nothing generates responses yet.
+  1. ~~Recv side routes to `weware_tcp_register_rx_callback`~~ **Done 2026-08-27:** `tcp_try_recv_once_and_dispatch` is CG-verbatim — builds a `ModuleMessage` (TCP→CMD, address `ip:port`) and calls `command_manager_accept_request`; rx-callback API removed. Response path (`utils_route_response_to_module` → type-38/39) already present, so TCP commands are end-to-end (pending on-target test).
   2. Default server is stage `13.126.118.139` (CG prod `65.1.190.236`); hostname allowed (CG IPv4-only).
 - **Config:** get/set/get_string parity minus `ign-det` key; `config_save_to_file` persistence not wired yet.
 
@@ -134,7 +135,7 @@ The five reference files supplied (`module_config.c`, `module_manager.c`, `syste
 
 ## 5. Not ported yet
 
-Command manager (SMS/TCP command handling — GPS/TCP/system config setters are compiled but unreachable without it) · SMS manager · UART manager (incl. `system_alive` main-loop watchdog message) · BLE manager + ag_dfu · OTA manager · digout (relay) manager · accelerometer (STK8321 — blocked on walnut I2C: `sdk_i2c` has no transfer API; needs vendor `i2cc_*` driver) · file-transfer · CG async log ring · HTTPS ops.
+~~Command manager~~ (compiled 2026-08-26 — see §1; `STM:`/PING-STM/DIGOUT stubbed until UART + digout managers land) · SMS manager · UART manager (incl. `system_alive` main-loop watchdog message) · BLE manager + ag_dfu · OTA manager · digout (relay) manager · accelerometer (STK8321 — blocked on walnut I2C: `sdk_i2c` has no transfer API; needs vendor `i2cc_*` driver) · file-transfer · CG async log ring · HTTPS ops.
 
 ## 6. Validation status
 

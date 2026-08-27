@@ -11,24 +11,27 @@
 #include "module/command/command_config.h"
 #include "weware_version.h"
 #include "module/module_manager.h"
+#ifndef UART_UNAVAILABLE
 #include "module/uart/uart_manager.h"
+#endif /* UART_UNAVAILABLE */
 #include "module/gps/gps_config.h"
 #include "module/gps/gps_manager.h"
 #include "system/system_manager.h"
 #include "system/ota/ota_manager.h"
 #include "system/reset/post_boot_handler.h"
 #include "module/gps/gps_ops.h"
-#include "module/tcp/tcp_client_lwip.h"
-#include "module/tcp/tcp_ops_lwip.h"
-#include "module/network/network_manager.h"
-#include "module/network/network_ops.h"
-#include "system/sim/sim_manager.h"
+#include "module/tcp/tcp.h"
+#include "module/tcp/tcp_ops.h"
+#include "module/network/network.h"
+#include "module/sim/sim.h"
 #include "system/device_utils.h"
 #include "system/time_utils.h"
 #include "config/config.h"
 #include "system/storage/file_system.h"
 #include "system/storage/flash_paths.h"
+#ifndef DIGOUT_UNAVAILABLE
 #include "system/gpio/digout_manager.h"
+#endif /* DIGOUT_UNAVAILABLE */
 #include "common/utils.h"
 #include "common/event_manager.h"
 
@@ -40,6 +43,8 @@
 #include "ctype.h"
 #include "strings.h"
 #include <stddef.h>
+
+#include "sdk_log.h"
 
 /*---------------------------------------------------------------
  * Log Configuration
@@ -118,7 +123,7 @@ BOOL cmd_parse_command(const char* text, char* cmd, char* args)
     
     /* Convert command to uppercase */
     for (char* p = cmd; *p; p++) {
-        *p = toupper(*p);
+        *p = (char)toupper((unsigned char)*p);
     }
     
     return strlen(cmd) > 0;
@@ -266,7 +271,7 @@ Result cmd_handler_generic(cmd_enum_t cmd_enum, const char* args_string, char* r
         size_t n;
         for (n = 0; n < buffer_size && response_buffer[n] != '\0'; n++) { }
         if (n >= buffer_size) {
-            LOG_WARN("Command response too long or unterminated");
+            sdk_log_warning("Command response too long or unterminated");
             return RESULT_ERROR;
         }
     }
@@ -289,15 +294,21 @@ Result cmd_handler_generic(cmd_enum_t cmd_enum, const char* args_string, char* r
 Result cmd_state_handle_check_stm_prefix(ModuleId source_module, const char* command_text,
                                         const char* source_address, char* response_buffer, size_t buffer_size)
 {
-    (void)response_buffer;  /* Not used for STM prefix routing */
-    (void)buffer_size;
-    
     if (!command_text) {
         return RESULT_BUSY;
     }
-    
+
     /* Check if command starts with "STM:" - route to UART */
     if (strncasecmp(command_text, STM_PREFIX, STM_PREFIX_LEN) == 0) {
+#ifdef UART_UNAVAILABLE
+        (void)source_module;
+        (void)source_address;
+        if (response_buffer && buffer_size > 0) {
+            snprintf(response_buffer, buffer_size,
+                     "ERROR: STM commands unavailable (UART module not present)");
+        }
+        return RESULT_ERROR;
+#else
         const ModuleConfig *uart_config = module_manager_get_config(MODULE_ID_UART);
         if (uart_config && uart_config->enabled && module_manager_is_initialized(MODULE_ID_UART)) {
             ModuleMessage uart_req = {0};
@@ -323,6 +334,7 @@ Result cmd_state_handle_check_stm_prefix(ModuleId source_module, const char* com
             }
         }
         return RESULT_ERROR;
+#endif /* UART_UNAVAILABLE */
     }
     
     /* Not STM: prefix, continue processing */
@@ -590,14 +602,14 @@ static BOOL cmd_delete_folder_resolved_ok(const char *path)
 Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t buffer_size)
 {
     if (!response_buffer || buffer_size == 0) {
-        LOG_ERROR("DELETE-FOLDER: invalid response buffer (buf=%p size=%u)",
+        sdk_log_error("DELETE-FOLDER: invalid response buffer (buf=%p size=%u)",
                   (void *)response_buffer, (unsigned)buffer_size);
         return RESULT_ERROR;
     }
     response_buffer[0] = '\0';
 
     if (!args_string) {
-        LOG_WARN("DELETE-FOLDER: missing args after auth");
+        sdk_log_warning("DELETE-FOLDER: missing args after auth");
         snprintf(response_buffer, buffer_size, "ERROR: Missing folder name");
         return RESULT_INVALID_PARAM;
     }
@@ -606,7 +618,7 @@ Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t 
     utils_strncpy_safe(work, args_string, sizeof(work));
     char *args_trim = utils_trim_whitespace(work);
     if (args_trim[0] == '\0') {
-        LOG_WARN("DELETE-FOLDER: empty args string");
+        sdk_log_warning("DELETE-FOLDER: empty args string");
         snprintf(response_buffer, buffer_size, "ERROR: Missing folder name");
         return RESULT_INVALID_PARAM;
     }
@@ -614,14 +626,14 @@ Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t 
     char extra[8];
     char name[80];
     if (sscanf(args_trim, "%79s %7s", name, extra) != 1) {
-        LOG_WARN("DELETE-FOLDER: expected one folder name, args='%s'", args_trim);
+        sdk_log_warning("DELETE-FOLDER: expected one folder name, args='%s'", args_trim);
         snprintf(response_buffer, buffer_size,
                  "ERROR: Pass one folder name only");
         return RESULT_INVALID_PARAM;
     }
 
     if (!cmd_delete_folder_name_valid(name)) {
-        LOG_WARN("DELETE-FOLDER: invalid folder name '%s'", name);
+        sdk_log_warning("DELETE-FOLDER: invalid folder name '%s'", name);
         snprintf(response_buffer, buffer_size,
                  "ERROR: Invalid folder name (no path or ..)");
         return RESULT_INVALID_PARAM;
@@ -629,45 +641,45 @@ Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t 
 
     char folder[CMD_DELETE_FOLDER_PATH_MAX];
     if (snprintf(folder, sizeof(folder), "%s%s/", FLASH_ROOT, name) >= (int)sizeof(folder)) {
-        LOG_WARN("DELETE-FOLDER: resolved path truncated (name='%s' root='%s')",
+        sdk_log_warning("DELETE-FOLDER: resolved path truncated (name='%s' root='%s')",
                  name, FLASH_ROOT);
         snprintf(response_buffer, buffer_size, "ERROR: Path too long");
         return RESULT_INVALID_PARAM;
     }
 
     if (!cmd_delete_folder_resolved_ok(folder)) {
-        LOG_WARN("DELETE-FOLDER: resolved path not under flash root (path='%s')", folder);
+        sdk_log_warning("DELETE-FOLDER: resolved path not under flash root (path='%s')", folder);
         snprintf(response_buffer, buffer_size, "ERROR: Invalid resolved path");
         return RESULT_INVALID_PARAM;
     }
 
-    LOG_INFO("Deleting folder %s", name);
+    sdk_log_info("Deleting folder %s", name);
 
     UINT32 total_deleted = 0;
     UINT32 total_failed  = 0;
     Result pr = file_system_delete_all_files_in_directory(folder, &total_deleted, &total_failed);
 
     if (pr == RESULT_NOT_SUPPORTED) {
-        LOG_ERROR("DELETE-FOLDER: list_dir not supported path='%s'", folder);
+        sdk_log_error("DELETE-FOLDER: list_dir not supported path='%s'", folder);
         snprintf(response_buffer, buffer_size,
                  "ERROR: list_dir not supported on this platform");
         return RESULT_ERROR;
     }
     if (pr != RESULT_SUCCESS) {
-        LOG_ERROR("DELETE-FOLDER: purge failed path='%s' result=%d", folder, (int)pr);
+        sdk_log_error("DELETE-FOLDER: purge failed path='%s' result=%d", folder, (int)pr);
         snprintf(response_buffer, buffer_size,
                  "ERROR: delete folder failed for '%s'", folder);
         return RESULT_ERROR;
     }
 
     if (total_failed > 0U) {
-        LOG_INFO("Folder %s purge done: %u deleted, %u failed",
+        sdk_log_info("Folder %s purge done: %u deleted, %u failed",
              name, (unsigned)total_deleted, (unsigned)total_failed);
         snprintf(response_buffer, buffer_size, "OK: deleted %u fail %u folder=%s",
                  (unsigned)total_deleted, (unsigned)total_failed, name);
         return RESULT_SUCCESS;
     }
-    LOG_INFO("Folder %s purge done: %u files deleted", name, (unsigned)total_deleted);
+    sdk_log_info("Folder %s purge done: %u files deleted", name, (unsigned)total_deleted);
     snprintf(response_buffer, buffer_size, "OK: deleted %u files folder=%s",
              (unsigned)total_deleted, name);
     return RESULT_SUCCESS;
@@ -687,29 +699,29 @@ Result cmd_factory_reset(const char *args_string, char *response_buffer, size_t 
     (void)args_string;
 
     if (!response_buffer || buffer_size == 0) {
-        LOG_ERROR("FACTORY-RESET: invalid response buffer");
+        sdk_log_error("FACTORY-RESET: invalid response buffer");
         return RESULT_ERROR;
     }
     response_buffer[0] = '\0';
 
-    LOG_WARN("Factory reset started");
+    sdk_log_warning("Factory reset started");
 
     Result w = file_system_wipe_user_flash_c();
     if (w == RESULT_NOT_SUPPORTED) {
-        LOG_ERROR("FACTORY-RESET: wipe not supported on this platform");
+        sdk_log_error("FACTORY-RESET: wipe not supported on this platform");
         snprintf(response_buffer, buffer_size,
                  "ERROR: wipe not supported (no reboot)");
         return RESULT_ERROR;
     }
     if (w != RESULT_SUCCESS) {
-        LOG_ERROR("FACTORY-RESET: wipe failed result=%d (no reboot)", (int)w);
+        sdk_log_error("FACTORY-RESET: wipe failed result=%d (no reboot)", (int)w);
         snprintf(response_buffer, buffer_size,
                  "ERROR: wipe failed (no reboot)");
         return RESULT_ERROR;
     }
 
     snprintf(response_buffer, buffer_size, "OK: factory folders cleared; rebooting");
-    LOG_WARN("Factory reset complete, rebooting");
+    sdk_log_warning("Factory reset complete, rebooting");
     (void)event_manager_broadcast(EVENT_RESET_SOFT, "FACTORY-RESET", NULL, 0);
     return RESULT_SUCCESS;
 }
@@ -734,7 +746,7 @@ Result cmd_mod_reboot(const char* args_string, char* response_buffer, size_t buf
         return RESULT_ERROR;
     }
     
-    LOG_INFO("Soft reboot requested");
+    sdk_log_info("Soft reboot requested");
     
     /* Broadcast soft reset event */
     event_manager_broadcast(EVENT_RESET_SOFT, "Command Manager", NULL, 0);
@@ -761,7 +773,7 @@ Result cmd_hard_reset(const char *args_string, char *response_buffer, size_t buf
         response_buffer[0] = '\0';
     }
 
-    LOG_WARN("Hard reset requested");
+    sdk_log_warning("Hard reset requested");
     SDK_SYSTEM_RESET();
     return RESULT_ERROR;
 }
@@ -785,7 +797,7 @@ Result cmd_force_ota(const char *args_string, char *response_buffer, size_t buff
         return RESULT_ERROR;
     }
 
-    LOG_WARN("FORCED-OTA requested — bypassing OTA prerequisite + cooldown gates");
+    sdk_log_warning("FORCED-OTA requested — bypassing OTA prerequisite + cooldown gates");
 
     if (ota_manager_force_update() == RESULT_BUSY)
     {
@@ -816,7 +828,9 @@ Result cmd_get_ota_status(const char *args_string, char *response_buffer, size_t
         return RESULT_ERROR;
     }
 
+    #ifndef UART_UNAVAILABLE
     ota_manager_get_status_string(response_buffer, (int)buffer_size);
+    #endif /* UART_UNAVAILABLE */
     return RESULT_SUCCESS;
 }
 
@@ -837,7 +851,7 @@ static void cmd_format_google_maps_url(char *buf, size_t buf_size, double lat, d
     buf[buf_size - 1] = '\0';
 }
 
-static const char *cmd_tcp_state_short(TcpClientState state)
+static const char *cmd_tcp_state_short(TcpState state)
 {
     switch (state) {
         case TCP_STATE_INIT: return "I";
@@ -914,7 +928,7 @@ Result cmd_get_dev_info(const char* args_string, char* response_buffer, size_t b
 
     /* Get SIM ICCID */
     char iccid[32] = "N/A";
-    if (sim_manager_get_sim_number(iccid) == RESULT_SUCCESS)
+    if (weware_sim_get_sim_number(iccid) == RESULT_SUCCESS)
     {
         iccid[31] = '\0';  /* Ensure null-terminated */
     }
@@ -982,13 +996,17 @@ Result cmd_get_dev_info(const char* args_string, char* response_buffer, size_t b
                       (double)ev_v,
                       (double)iw_v,
                       bp_pct,
+#ifdef DIGOUT_UNAVAILABLE
+                      0, /* digout manager not ported */
+#else
                       digout_manager_get_on() ? 1 : 0,
+#endif /* DIGOUT_UNAVAILABLE */
                       (unsigned long)total_resets,
                       stf_ver);
     
     if (len < 0 || (size_t)len >= buffer_size)
     {
-        LOG_ERROR("Device info response too long");
+        sdk_log_error("Device info response too long");
         return RESULT_ERROR;
     }
     
@@ -1019,8 +1037,6 @@ Result cmd_get_dev_status(const char* args_string, char* response_buffer, size_t
     response_buffer[0] = '\0';
 
     extern gps_manager_runtime_t g_gps;
-    extern tcp_client_runtime_t g_tcp_client;
-    extern network_manager_runtime_t g_network;
 
     const GpsPacket *gps = &g_gps.current_gps_data;
     const GpsPacket *last_valid = &g_gps.last_valid_gps_data;
@@ -1035,9 +1051,9 @@ Result cmd_get_dev_status(const char* args_string, char* response_buffer, size_t
                                last_pos_ok);
 
     UINT8 gsm_strength = 99u;
-    NetworkGpsRadioSnapshot radio;
-    if (network_manager_get_gps_radio_snapshot(&radio) && radio.valid)
-        gsm_strength = radio.signal_strength;
+    NetworkRadioSnapshot radio;
+    if (weware_network_get_radio_snapshot(&radio) && radio.valid)
+        gsm_strength = (UINT8)radio.signal_strength;
 
     UINT32 uptime_sec = utils_get_uptime_seconds();
 
@@ -1056,8 +1072,8 @@ Result cmd_get_dev_status(const char* args_string, char* response_buffer, size_t
     int len = snprintf(response_buffer, buffer_size,
                       "g:%c,t:%s,n:%s,up:%lu,sa:%u,tm:%s,GS:%u,ign:%d,mot:%d,m:%s",
                       pos_ok ? 'F' : 'N',
-                      cmd_tcp_state_short(g_tcp_client.state),
-                      cmd_network_state_short(g_network.state),
+                      cmd_tcp_state_short(weware_tcp_get_state()),
+                      cmd_network_state_short(weware_network_get_state()),
                       (unsigned long)uptime_sec,
                       (unsigned)gps->sats_in_use,
                       timestamp_str,
@@ -1068,7 +1084,7 @@ Result cmd_get_dev_status(const char* args_string, char* response_buffer, size_t
     
     if (len < 0 || (size_t)len >= buffer_size)
     {
-        LOG_ERROR("Device status response too long");
+        sdk_log_error("Device status response too long");
         return RESULT_ERROR;
     }
 
@@ -1079,6 +1095,19 @@ Result cmd_get_dev_status(const char* args_string, char* response_buffer, size_t
  * DIGOUT — relay GPIO (true = LOW, false = HIGH); persisted in Command config
  * ============================================================================ */
 
+#ifdef DIGOUT_UNAVAILABLE
+/**
+ * @brief Handle DIGOUT command — digout manager not ported on this platform
+ */
+Result cmd_digout(const char *args_string, char *response_buffer, size_t buffer_size)
+{
+    (void)args_string;
+    if (!response_buffer || buffer_size == 0)
+        return RESULT_ERROR;
+    snprintf(response_buffer, buffer_size, "ERROR: DIGOUT unavailable (digout manager not present)");
+    return RESULT_ERROR;
+}
+#else
 static BOOL cmd_digout_parse_bool(const char *args_trim, BOOL *out_on)
 {
     const char *value = args_trim;
@@ -1144,6 +1173,7 @@ Result cmd_digout(const char *args_string, char *response_buffer, size_t buffer_
     snprintf(response_buffer, buffer_size, "OK: digout:%s", on ? "true" : "false");
     return RESULT_SUCCESS;
 }
+#endif /* DIGOUT_UNAVAILABLE */
 
 /**
  * @brief SET-MIN-CSQ — args: 0-31 (0 disables CSQ gate for A-GPS and OTA HTTPS)

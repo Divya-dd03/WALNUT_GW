@@ -24,6 +24,7 @@
   */
 
 #include <string.h>
+#include <stdio.h>
 
 /* errno constants (EAGAIN etc.) come from lwIP arch.h via the wm_global.h
  * include chain - the same values the kernel's lwip_getsockerrno returns.
@@ -43,6 +44,7 @@
 #include "common/queue_manager.h"
 #include "common/task_stats.h"
 #include "common/utils.h"   /* SET_STATE / HANDLE_STATE (reference macros) */
+#include "module/command/command_manager.h"
 
 /*===============================================================
  * Constants
@@ -74,13 +76,14 @@ tcp_client_runtime_t g_tcp_client = {
 char g_login_packet_buffer[TCP_LOGIN_BUFFER_SIZE];
 char g_data_packet_buffer[TCP_DATA_BUFFER_SIZE];
 
-/* Receive buffer for the task-side recv (off-stack) */
-static char g_tcp_recv_buf[TCP_RECV_BUF_SIZE] = {0};
+/* Static buffers for TCP callback to avoid stack overflow (callbacks may have limited stack) */
+static char g_tcp_recv_buf[TCP_RECV_BUF_SIZE] = {0};  /* Receive buffer for TCP callback */
+static ModuleMessage g_tcp_cmd_msg = {0};  /* ModuleMessage buffer for TCP callback */
+static char g_tcp_addr_buf[32] = {0};  /* Address buffer for TCP callback */
 
 static void              *g_tcp_task  = NULL;
 /* Stack usage sampling for the TCP task (reference: g_tcp_client.task_stats) */
 static TaskStats          g_tcp_task_stats;
-static weware_tcp_rx_cb_t g_tcp_rx_cb = NULL;
 
 /*===============================================================
  * State Timeout Configuration (0 = no timeout for that state)
@@ -156,34 +159,55 @@ static void tcp_log_state_transition(TcpState old_state, TcpState new_state)
 static bool tcp_try_recv_once_and_dispatch(void)
 {
     int fd = g_tcp_client.tcp_fd;
-    int rlen;
-    int err;
-
     if (fd < 0)
         return false;
-
-    memset(g_tcp_recv_buf, 0, sizeof(g_tcp_recv_buf));
-    rlen = sdk_tcp_recv(fd, g_tcp_recv_buf, sizeof(g_tcp_recv_buf) - 1U, 0);
-    if (rlen > 0) {
-        g_tcp_recv_buf[rlen] = '\0';
-        sdk_log_info("TCP [RECV] received data (%d bytes): %.*s",
-                     rlen, (rlen < 200) ? rlen : 200, g_tcp_recv_buf);
-
-        /* TODO(packets): parse server frames (commands) here; for now the
-         * payload is handed to the registered rx callback. */
-        if (g_tcp_rx_cb)
-            g_tcp_rx_cb(g_tcp_recv_buf, rlen);
-
-        return true;    /* more may be pending, keep flag for next cycle */
+    char *buf = g_tcp_recv_buf;
+    ModuleMessage *cmd_msg = &g_tcp_cmd_msg;
+    size_t buf_size = sizeof(g_tcp_recv_buf) - 1;
+    memset(buf, 0, sizeof(g_tcp_recv_buf));
+    int rlen = sdk_tcp_recv(fd, buf, (unsigned int)buf_size, 0);
+    if (rlen > 0)
+    {
+        if (rlen < 5)
+            return true;   /* skip short, more may be pending */
+        if (rlen < (int)sizeof(g_tcp_recv_buf))
+            buf[rlen] = '\0';
+        else
+        {
+            rlen = (int)buf_size;
+            buf[rlen] = '\0';
+        }
+        sdk_log_info("[TCP] Received data (%d bytes): %.*s", rlen, (int)((rlen < 200) ? rlen : 200), buf);
+        memset(cmd_msg, 0, sizeof(g_tcp_cmd_msg));
+        cmd_msg->source_module = MODULE_ID_TCP;
+        cmd_msg->destination_module = MODULE_ID_CMD;
+        if (g_tcp_client.config)
+        {
+            memset(g_tcp_addr_buf, 0, sizeof(g_tcp_addr_buf));
+            int addr_len = snprintf(g_tcp_addr_buf, sizeof(g_tcp_addr_buf), "%s:%d",
+                                   g_tcp_client.config->server_ip, g_tcp_client.config->server_port);
+            if (addr_len > 0 && addr_len < (int)sizeof(cmd_msg->address))
+                utils_strncpy_safe(cmd_msg->address, g_tcp_addr_buf, sizeof(cmd_msg->address));
+            else
+                cmd_msg->address[0] = '\0';
+        }
+        else
+            cmd_msg->address[0] = '\0';
+        {
+            int copied = utils_strncpy_safe(cmd_msg->message, buf, sizeof(cmd_msg->message));
+            if (copied >= 0) {
+                cmd_msg->data_len = (UINT32)copied;
+            }
+        }
+        if (command_manager_accept_request(cmd_msg) != RESULT_SUCCESS)
+            sdk_log_warning("[TCP] Failed to send to command manager");
+        return true;   /* more data may be pending, keep flag for next cycle */
     }
-    if (rlen == 0) {
-        sdk_log_error("TCP [RECV] peer closed connection (recv=0)");
-        return false;   /* CLOSE arrives via the monitor */
-    }
-    err = sdk_tcp_get_sock_errno(fd);
-    if (err == EAGAIN || err == EWOULDBLOCK || err == 11)
-        return false;   /* not ready this cycle; next RCVPLUS re-arms */
-    sdk_log_error("TCP [RECV] recv failed, errno: %d", err);
+    if (rlen == 0)
+        return false;  /* closed */
+    if (sdk_tcp_get_sock_errno(fd) == EAGAIN)
+        return false;  /* not ready this cycle; clear flag, next RCVPLUS will set it again */
+    sdk_log_warning("[TCP] recv failed, errno: %d", sdk_tcp_get_sock_errno(fd));
     return false;
 }
 
@@ -577,11 +601,6 @@ SdkResult weware_tcp_reset_connection(void)
     sdk_log_info("TCP connection reset requested");
     SET_STATE(g_tcp_client.state, TCP_STATE_CLOSED);
     return SDK_RESULT_SUCCESS;
-}
-
-void weware_tcp_register_rx_callback(weware_tcp_rx_cb_t callback)
-{
-    g_tcp_rx_cb = callback;
 }
 
 SdkResult weware_tcp_init(void)

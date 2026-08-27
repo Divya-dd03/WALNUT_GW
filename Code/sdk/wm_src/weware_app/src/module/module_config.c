@@ -27,6 +27,7 @@
 #include "module/network/network_config.h"
 #include "module/sim/sim.h"
 #include "module/tcp/tcp.h"
+#include "module/command/command_manager.h"
 #include "module/urc/urc_processor.h"
 #include "system/system_config.h"
 
@@ -86,26 +87,38 @@ static Module g_module_uart = {
     .status = {0}
 };
 
-/* Command manager not ported to walnut yet - slot kept, module disabled. */
 static Module g_module_cmd = {
     .config = {
         .module_id = MODULE_ID_CMD,
         .name = "Command Manager",
-        .enabled = FALSE,
-        .required = FALSE,
-        .continue_on_fail = TRUE,
-        .has_task = FALSE,
-        .init_fn = NULL,
-        .deinit_fn = NULL,
-        .config_get_defaults_fn = NULL,
-        .config_validate_fn = NULL,
-        .config_ptr = NULL,
-        .config_size = 0,
-        .config_stored = FALSE,
-        .msg_q_config = {0},
+        .enabled = TRUE,
+        .required = TRUE,
+        .continue_on_fail = FALSE,
+        .has_task = TRUE,
+        .init_fn = (ModuleInitFn)command_manager_init,
+        .deinit_fn = (ModuleDeinitFn)command_manager_deinit,
+        .config_get_defaults_fn = (ModuleConfigGetDefaultsFn)command_config_get_defaults,
+        .config_validate_fn = (ModuleConfigValidateFn)command_config_validate,
+        .config_ptr = &g_command_config,
+        .config_size = sizeof(CommandConfig),
+        .config_stored = TRUE,
+        .msg_q_config = {
+            .name = "CMD_REQUEST_Q",
+            .element_size = sizeof(ModuleMessage),
+            .capacity = 5,
+            .thread_safe = FALSE,
+            .max_file_size = 0,
+            .persist_on_reboot = FALSE
+        },
         .msg_q = NULL
     },
-    .status = {0}
+    .status = {
+        .initialized = FALSE,
+        .connected = FALSE,
+        .task_uptime_sec = 0,
+        .retries = 0,
+        .last_error = 0
+    }
 };
 
 static Module g_module_urc = {
