@@ -868,9 +868,57 @@ Result ota_manager_force_update(void)
     return RESULT_SUCCESS;
 }
 
-/* WALNUT: ota_reason_str / ota_manager_get_status_string omitted - they
- * report ST-transfer progress (device_utils_get_st_firmware_version,
- * file_transfer_get_active_progress), which is not ported. */
+/* Short human-readable name for an OtaReason (for the GET-OTA-STATUS SMS reply). */
+static const char *ota_reason_str(UINT8 r)
+{
+    switch (r) {
+        case OTA_REASON_OK:             return "ok";
+        case OTA_REASON_ST_VER_UNKNOWN: return "ST ver unknown";
+        case OTA_REASON_NO_UPDATE:      return "no update";
+        case OTA_REASON_VERSION_CHECK:  return "ver-check fail";
+        case OTA_REASON_DOWNLOAD:       return "download fail";
+        case OTA_REASON_XFER_TIMEOUT:   return "STM timeout";
+        case OTA_REASON_XFER_REJECT:    return "STM rejected";
+        case OTA_REASON_XFER_LOCAL:     return "local err";
+        default:                        return "idle";
+    }
+}
+
+int ota_manager_get_status_string(char *out, int size)
+{
+    if (!out || size <= 0)
+        return 0;
+
+    char stver[32] = {0};   /* matches device_utils ST_FW_VERSION_BUFFER_SIZE */
+    if (!device_utils_get_st_firmware_version(stver))
+        utils_strncpy_safe(stver, "?", sizeof(stver));
+
+    /* WALNUT: the reference checked file_transfer_get_active_progress() first, to
+     * report LIVE STM-transfer progress instead of the (stale/terminal)
+     * last-reason. system/file_transfer is not ported, so that branch is omitted
+     * and the last-reason path below always runs. */
+
+    UINT8 r = g_ota_state.st_last_reason;
+    int n;
+    /* Include chunk/percent only for transfer-stage outcomes; keep it short for SMS. */
+    if (r == OTA_REASON_XFER_TIMEOUT || r == OTA_REASON_XFER_REJECT || r == OTA_REASON_XFER_LOCAL)
+    {
+        n = snprintf(out, size, "STM-OTA:%s c%u/%u %u%%; STfw=%s; SIM:%s",
+                     ota_reason_str(r),
+                     (unsigned)g_ota_state.st_last_chunk,
+                     (unsigned)g_ota_state.st_last_total_chunks,
+                     (unsigned)g_ota_state.st_last_pct,
+                     stver,
+                     ota_reason_str(g_ota_state.sim_last_reason));
+    }
+    else
+    {
+        n = snprintf(out, size, "STM-OTA:%s; STfw=%s; SIM:%s",
+                     ota_reason_str(r), stver,
+                     ota_reason_str(g_ota_state.sim_last_reason));
+    }
+    return (n < 0) ? 0 : n;
+}
 
 OtaResult ota_manager_run_device(OtaDevice device)
 {

@@ -13,6 +13,9 @@
 #include "module/module_manager.h"
 #ifndef UART_UNAVAILABLE
 #include "module/uart/uart_manager.h"
+#include "common/stm_binary_protocol.h"
+#include "common/stm_command_map.h"
+#include "system/reset/pre_boot_handler.h"
 #endif /* UART_UNAVAILABLE */
 #include "module/gps/gps_config.h"
 #include "module/gps/gps_manager.h"
@@ -298,47 +301,89 @@ Result cmd_state_handle_check_stm_prefix(ModuleId source_module, const char* com
         return RESULT_BUSY;
     }
 
-    /* Check if command starts with "STM:" - route to UART */
-    if (strncasecmp(command_text, STM_PREFIX, STM_PREFIX_LEN) == 0) {
-#ifdef UART_UNAVAILABLE
-        (void)source_module;
-        (void)source_address;
-        if (response_buffer && buffer_size > 0) {
-            snprintf(response_buffer, buffer_size,
-                     "ERROR: STM commands unavailable (UART module not present)");
-        }
-        return RESULT_ERROR;
-#else
-        const ModuleConfig *uart_config = module_manager_get_config(MODULE_ID_UART);
-        if (uart_config && uart_config->enabled && module_manager_is_initialized(MODULE_ID_UART)) {
-            ModuleMessage uart_req = {0};
-            uart_req.source_module = source_module;  /* Use module ID directly */
-            uart_req.destination_module = MODULE_ID_UART;
-            
-            if (source_address) {
-                utils_strncpy_safe(uart_req.address, source_address, sizeof(uart_req.address));
-            }
-            
-            const char* cmd_without_prefix = command_text + STM_PREFIX_LEN;
-            while (isspace((unsigned char)*cmd_without_prefix)) {
-                cmd_without_prefix++;
-            }
-            
-            {
-                int n = utils_strncpy_safe(uart_req.message, cmd_without_prefix, sizeof(uart_req.message));
-                uart_req.data_len = (n >= 0) ? (UINT32)n : 0U;
-            }
-            
-            if (uart_manager_send_request(&uart_req) == RESULT_SUCCESS) {
-                return RESULT_SUCCESS;
-            }
-        }
-        return RESULT_ERROR;
-#endif /* UART_UNAVAILABLE */
+    /* Not an STM: command — let the caller continue processing. */
+    if (strncasecmp(command_text, STM_PREFIX, STM_PREFIX_LEN) != 0) {
+        return RESULT_BUSY;
     }
-    
-    /* Not STM: prefix, continue processing */
-    return RESULT_BUSY;
+
+#ifdef UART_UNAVAILABLE
+    (void)source_module;
+    (void)source_address;
+    if (response_buffer && buffer_size > 0) {
+        snprintf(response_buffer, buffer_size,
+                 "ERROR: STM commands unavailable (UART module not present)");
+    }
+    return RESULT_ERROR;
+#else
+    const ModuleConfig *uart_config = module_manager_get_config(MODULE_ID_UART);
+    if (!uart_config || !uart_config->enabled || !module_manager_is_initialized(MODULE_ID_UART)) {
+        return RESULT_ERROR;
+    }
+
+    const char* cmd_without_prefix = command_text + STM_PREFIX_LEN;
+    while (isspace((unsigned char)*cmd_without_prefix)) {
+        cmd_without_prefix++;
+    }
+
+    /* Map the originating channel to the binary SRC fields. STM echoes SRC_TYPE +
+     * SRC_ADDR back so the reply routes to the right originator. SMS carries the
+     * phone number; TCP has a single connection (no address, per the protocol). */
+    UINT8        src_type = STM_SRC_TYPE_TCP;
+    const UINT8 *src_addr = NULL;
+    UINT8        src_len  = 0;
+    if (source_module == MODULE_ID_SMS) {
+        src_type = STM_SRC_TYPE_SMS;
+        if (source_address && source_address[0]) {
+            size_t al = strlen(source_address);
+            src_addr  = (const UINT8 *)source_address;
+            src_len   = (al > STM_SRC_LEN_MAX) ? (UINT8)STM_SRC_LEN_MAX : (UINT8)al;
+        }
+    }
+
+    ModuleMessage uart_req = {0};
+    uart_req.source_module      = source_module;   /* reply routes back here */
+    uart_req.destination_module = MODULE_ID_UART;
+    if (source_address) {
+        utils_strncpy_safe(uart_req.address, source_address, sizeof(uart_req.address));
+    }
+
+    /* Translate the known ASCII command to a binary frame; fall back to raw-hex
+     * passthrough for commands not yet mapped (new STM opcodes need no change here). */
+    int flen = stm_cmd_build_from_ascii(cmd_without_prefix, src_type, src_addr, src_len,
+                                        (UINT8 *)uart_req.message, (int)sizeof(uart_req.message));
+    if (flen == STM_CMD_UNKNOWN) {
+        flen = stm_cmd_try_hex_passthrough(cmd_without_prefix,
+                                           (UINT8 *)uart_req.message, (int)sizeof(uart_req.message));
+    }
+    if (flen <= 0) {
+        if (response_buffer && buffer_size) {
+            snprintf(response_buffer, buffer_size, "ERROR: STM command not supported");
+        }
+        return RESULT_ERROR;
+    }
+
+    uart_req.data_len           = (UINT32)flen;
+    uart_req.is_raw             = TRUE;
+    uart_req.use_dynamic_buffer = FALSE;
+
+    if (uart_manager_send_request(&uart_req) == RESULT_SUCCESS) {
+        /* "system-restart" triggers a whole-device power-cycle: persist the pre-boot
+         * record before the STM cuts power. */
+        if (strncasecmp(cmd_without_prefix, "system-restart", 14) == 0) {
+            UINT32 utc = 0;
+            const char *src = (source_address && source_address[0])
+                                  ? source_address : "STM system-restart";
+            time_utils_get_time(TIME_TYPE_UTC_UNIX, NULL, NULL, NULL, NULL, NULL, NULL, &utc);
+            (void)pre_boot_handler_save_before_soc_reset(RESET_TYPE_HARD, utc, src);
+            /* reference: LOG_ERRC(ERR_PWR_RESET_REQBYSW, ...) + log_storage_flush()
+             * - no error_codes.h / async log ring on walnut (see uart_manager.c). */
+            sdk_log_error("ERR_PWR_RESET_REQBYSW: STM system-restart -> whole-device power-cycle (source=%s)",
+                      src); /* ERRC */
+        }
+        return RESULT_SUCCESS;
+    }
+    return RESULT_ERROR;
+#endif /* UART_UNAVAILABLE */
 }
 
 /**

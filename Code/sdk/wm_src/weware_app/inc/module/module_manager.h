@@ -56,6 +56,8 @@ typedef struct {
     void *dynamic_buffer;              /**< Payload when use_dynamic_buffer is TRUE; caller allocates, consumer frees */
     UINT32 data_len;                   /**< Byte length: dynamic_buffer if use_dynamic_buffer; else message[] payload */
     BOOL use_dynamic_buffer;           /**< If TRUE, payload at dynamic_buffer (length in data_len); else message[] (length in data_len) */
+    BOOL is_raw;                       /**< TX only: if TRUE, UART sends the payload bytes verbatim (binary frame), no "SRC,ADDR,MSG#" ASCII wrapping */
+    BOOL payload_is_binary;            /**< RX routing: if TRUE, message[]/dynamic_buffer holds raw binary (length in data_len), not a NUL-terminated string */
 } ModuleMessage;
 
 /**

@@ -11,7 +11,7 @@ set(CMAKE_CXX_COMPILER_FORCED 1)
 set(WM_PROD_APP 77)
 set(WM_UI_APP 88)
 set(WM_LIB 99)
-set(WM_BUILD_PURPOSE ${WM_UI_APP})  # Change this to WM_PROD_APP, WM_UI_APP or WM_LIB as needed
+set(WM_BUILD_PURPOSE ${WM_PROD_APP})  # Change this to WM_PROD_APP, WM_UI_APP or WM_LIB as needed
 configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/wm_config.h.in  ${CMAKE_CURRENT_SOURCE_DIR}/wm_src/wm_lib/inc/wm_config.h @ONLY)
 option(USE_XIP "Execute-in-place (XIP) flash image" OFF)
 

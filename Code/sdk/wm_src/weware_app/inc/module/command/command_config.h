@@ -9,15 +9,14 @@
 #include "common/types.h"
 
 /**
- * @brief UART module is not yet ported on the Walnut gateway.
- * While defined, the command module compiles without the UART manager:
- * "STM:" prefixed commands and PING-STM reply "unavailable" instead of
- * routing to the UART task. Remove this define (or define it from the
- * build system) once module/uart is integrated.
+ * @brief UART manager integration gate (kept for bring-up / bisecting).
+ * module/uart is ported and enabled, so this is left UNDEFINED: "STM:" prefixed
+ * commands are translated to binary STM frames (common/stm_command_map.h) and
+ * routed to the UART task, and PING-STM arms uart_manager_start_ping_test().
+ * Define it (here or from the build system) to compile the command module
+ * without the UART manager — both paths then reply "unavailable".
  */
-#ifndef UART_UNAVAILABLE
-#define UART_UNAVAILABLE
-#endif
+/* #define UART_UNAVAILABLE */
 
 /**
  * @brief Relay digout manager (system/gpio/digout_manager) is not yet ported

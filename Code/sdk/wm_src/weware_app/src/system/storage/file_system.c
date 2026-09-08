@@ -10,6 +10,10 @@
 #include "sdk_platform.h"
 #include "functionality/sdk_functionality_file.h"
 
+/* Vendor FS API for directory listing (fs_opendir/fs_readdir/fs_closedir),
+ * exported by the kernel via core_stub.o. */
+#include "fs_api.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -62,20 +66,64 @@ static SdkResult sdk_file_get_disk_info(const char *root_path,
     return SDK_RESULT_SUCCESS;
 }
 
-/* TODO(fs): directory listing needs the vendor fs_opendir/fs_readdir API
- * (components/inc/fs_api.h); wire it up when a consumer (factory reset /
- * file-transfer module) is ported. Until then listing is unsupported. */
+/* Directory listing over the vendor fs_opendir/fs_readdir/fs_closedir API.
+ *
+ * Kernel behaviour (from cp.map + disassembly of the vendor readdir wrapper
+ * in lib_wmsrc_B.a c_wrap.c.obj):
+ *   - fs_opendir wants the path WITHOUT a trailing slash (same kernel rule
+ *     as fs_stat/fs_makedir) and returns 0 on failure;
+ *   - fs_readdir returns (uint32_t)-1 on failure, and end-of-directory is
+ *     signalled by an EMPTY file_name, not by the return code;
+ *   - DirFileInfo_t.permissions == 0x200 marks a directory (the vendor
+ *     wrapper maps exactly that to DT_DIR).
+ */
+#define FS_KERNEL_PERM_DIR 0x200U
+
 static SdkResult sdk_file_list_dir(const char *path,
                                    SdkFileDirEntry *entries,
                                    UINT32 max_entries,
                                    UINT32 *out_count)
 {
-    (void)path;
-    (void)entries;
-    (void)max_entries;
     if (out_count)
         *out_count = 0;
-    return SDK_RESULT_NOT_SUPPORTED;
+    if (!path || !entries || max_entries == 0U || !out_count)
+        return SDK_RESULT_INVALID_PARAM;
+
+    /* Strip a trailing slash (keep the "C:/" root intact). */
+    char dir[128];
+    size_t len = strlen(path);
+    if (len == 0U || len >= sizeof(dir))
+        return SDK_RESULT_INVALID_PARAM;
+    memcpy(dir, path, len + 1U);
+    if (len > 3U && dir[len - 1U] == '/')
+        dir[len - 1U] = '\0';
+
+    uint32_t stream = fs_opendir(dir);
+    if (stream == 0U) {
+        LOG_WARN("list_dir: fs_opendir failed '%s'", dir);
+        return SDK_RESULT_ERROR;
+    }
+
+    UINT32 count = 0U;
+    while (count < max_entries) {
+        DirFileInfo_t info;
+        memset(&info, 0, sizeof(info));
+
+        uint32_t rc = fs_readdir((int)stream, &info);
+        if (rc == (uint32_t)-1 || info.file_name[0] == '\0')
+            break;   /* -1 = failure, empty name = end of directory */
+
+        SdkFileDirEntry *e = &entries[count];
+        strncpy(e->name, info.file_name, sizeof(e->name) - 1U);
+        e->name[sizeof(e->name) - 1U] = '\0';
+        e->size = (long)info.size;
+        e->type = (info.permissions == FS_KERNEL_PERM_DIR) ? 1 : 0;
+        count++;
+    }
+
+    (void)fs_closedir((int)stream);
+    *out_count = count;
+    return SDK_RESULT_SUCCESS;
 }
 
 /* Create the parent directory of @p path if it is missing.

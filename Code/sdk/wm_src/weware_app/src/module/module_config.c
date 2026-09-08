@@ -4,7 +4,7 @@
  *
  * Walnut port of the reference module_config.c. The ModuleId enum keeps the
  * full reference order (module_manager.h); modules not yet ported to walnut
- * (UART, CMD, SMS, BLE) keep their registry slots but are disabled with NULL
+ * (UART, BLE) keep their registry slots but are disabled with NULL
  * init functions, so module_manager treats them as trivially initialized.
  *
  * Init/deinit/config function pointers use the same cast convention as the
@@ -26,7 +26,11 @@
 #include "module/network/network.h"
 #include "module/network/network_config.h"
 #include "module/sim/sim.h"
+#include "module/sms/sms_manager.h"
+#include "module/sms/sms_config.h"
+#include "module/urc/urc_sms_queue_types.h"
 #include "module/tcp/tcp.h"
+#include "module/uart/uart_manager.h"
 #include "module/command/command_manager.h"
 #include "module/urc/urc_processor.h"
 #include "system/system_config.h"
@@ -65,26 +69,44 @@ static Module g_module_log = {
     .status = {0}
 };
 
-/* UART manager not ported to walnut yet - slot kept, module disabled. */
+/* UART manager: enabled, but see the blocker note at the top of
+ * src/module/uart/uart_manager.c - the SDK's sdk_uart_set_config() can only ask
+ * for drvUart port 0 (the CP debug console), which the driver always refuses,
+ * so init currently fails with ERR_UART_CONFIG_ERROR. The board's free
+ * full-duplex UART is drvUart port 2 (0xd401f000); reaching it needs an
+ * sdk_uart.h implementation that honours the port argument. */
 static Module g_module_uart = {
     .config = {
         .module_id = MODULE_ID_UART,
         .name = "UART Manager",
-        .enabled = FALSE,
+        .enabled = FALSE, /* currently unavailable as ports are not exposed */
         .required = FALSE,
         .continue_on_fail = TRUE,
-        .has_task = FALSE,
-        .init_fn = NULL,
-        .deinit_fn = NULL,
+        .has_task = TRUE,
+        .init_fn = (ModuleInitFn)uart_manager_init,
+        .deinit_fn = (ModuleDeinitFn)uart_manager_deinit,
         .config_get_defaults_fn = NULL,
         .config_validate_fn = NULL,
         .config_ptr = NULL,
         .config_size = 0,
         .config_stored = FALSE,
-        .msg_q_config = {0},
+        .msg_q_config = {
+            .name = "UART_REQUEST_Q",
+            .element_size = sizeof(ModuleMessage),
+            .capacity = 5,
+            .thread_safe = FALSE,
+            .max_file_size = 0,
+            .persist_on_reboot = FALSE
+        },
         .msg_q = NULL
     },
-    .status = {0}
+    .status = {
+        .initialized = FALSE,
+        .connected = FALSE,
+        .task_uptime_sec = 0,
+        .retries = 0,
+        .last_error = 0
+    }
 };
 
 static Module g_module_cmd = {
@@ -263,26 +285,56 @@ static Module g_module_gps = {
     .status = {0}
 };
 
-/* SMS manager not ported to walnut yet - slot kept, module disabled. */
 static Module g_module_sms = {
     .config = {
         .module_id = MODULE_ID_SMS,
         .name = "SMS Manager",
-        .enabled = FALSE,
-        .required = FALSE,
-        .continue_on_fail = TRUE,
-        .has_task = FALSE,
-        .init_fn = NULL,
-        .deinit_fn = NULL,
-        .config_get_defaults_fn = NULL,
-        .config_validate_fn = NULL,
-        .config_ptr = NULL,
-        .config_size = 0,
-        .config_stored = FALSE,
-        .msg_q_config = {0},
-        .msg_q = NULL
+        .enabled = TRUE,
+        .required = TRUE,
+        .continue_on_fail = FALSE,
+        .has_task = TRUE,
+        .init_fn = (ModuleInitFn)sms_manager_init,
+        .deinit_fn = (ModuleDeinitFn)sms_manager_deinit,
+        .config_get_defaults_fn = (ModuleConfigGetDefaultsFn)sms_config_get_defaults,
+        .config_validate_fn = (ModuleConfigValidateFn)sms_config_validate,
+        .config_ptr = &g_sms_config,
+        .config_size = sizeof(SmsConfig),
+        .config_stored = TRUE,
+        /* Outbound SMS + command replies routed back to the originating phone
+         * number (reference SMS_SEND_Q): filled by sms_manager_send and by
+         * utils_route_response_to_module, drained one per cycle by the SMS
+         * task. */
+        .msg_q_config = {
+            .name = "SMS_SEND_Q",
+            .element_size = sizeof(ModuleMessage),
+            .capacity = 5,
+            .thread_safe = FALSE,
+            .max_file_size = 0,
+            .persist_on_reboot = FALSE
+        },
+        .msg_q = NULL,
+        /* Inbound SMS landing queue (reference SMS_URC_Q): the reference's
+         * urc_processor pushed the raw +CMTI line here. Walnut has no SMS URC
+         * - sms_manager.c parks the SDK's SDK_SMS_EVT_INCOMING events (raw
+         * +CMGR text inlined, see urc_sms_queue_types.h) so the same
+         * pop -> sms_process_urc flow runs. */
+        .urc_q_config = {
+            .name = "SMS_URC_Q",
+            .element_size = (UINT32)sizeof(sms_urc_queued_t),
+            .capacity = 5U,
+            .thread_safe = TRUE,
+            .max_file_size = 0,
+            .persist_on_reboot = FALSE
+        },
+        .urc_q = NULL
     },
-    .status = {0}
+    .status = {
+        .initialized = FALSE,
+        .connected = FALSE,
+        .task_uptime_sec = 0,
+        .retries = 0,
+        .last_error = 0
+    }
 };
 
 /* BLE manager not ported to walnut yet - slot kept, module disabled. */
@@ -331,14 +383,14 @@ static Module g_module_system = {
 /* Order must match ModuleId enum (LOG first so sink is ready early in module init pass) */
 Module *g_modules[] = {
     &g_module_log,      /* MODULE_ID_LOG */
-    &g_module_uart,     /* MODULE_ID_UART (disabled) */
-    &g_module_cmd,      /* MODULE_ID_CMD (disabled) */
+    &g_module_uart,     /* MODULE_ID_UART (disabled - no usable drvUart port yet) */
+    &g_module_cmd,      /* MODULE_ID_CMD */
     &g_module_urc,      /* MODULE_ID_URC */
     &g_module_sim,      /* MODULE_ID_SIM */
     &g_module_network,  /* MODULE_ID_NETWORK */
     &g_module_tcp,      /* MODULE_ID_TCP */
     &g_module_gps,      /* MODULE_ID_GPS */
-    &g_module_sms,      /* MODULE_ID_SMS (disabled) */
+    &g_module_sms,      /* MODULE_ID_SMS */
     &g_module_ble,      /* MODULE_ID_BLE (disabled) */
     &g_module_system,   /* MODULE_ID_SYSTEM */
     NULL,               /* MODULE_ID_FILE_TRANSFER - no Module slot (legacy) */

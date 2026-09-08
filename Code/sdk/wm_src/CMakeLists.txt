@@ -47,6 +47,8 @@ target_sources(${target} PRIVATE
     weware_app/src/common/queue_manager.c
     weware_app/src/common/state_timeout.c
     weware_app/src/common/task_stats.c
+    weware_app/src/common/stm_binary_protocol.c
+    weware_app/src/common/stm_command_map.c
     # module framework
     weware_app/src/module/module_manager.c
     weware_app/src/module/module_config.c
@@ -58,6 +60,11 @@ target_sources(${target} PRIVATE
     weware_app/src/module/network/network_config.c
     # sim
     weware_app/src/module/sim/sim.c
+    # sms
+    weware_app/src/module/sms/sms_manager.c
+    weware_app/src/module/sms/sms_config.c
+    # uart
+    weware_app/src/module/uart/uart_manager.c
     # tcp
     weware_app/src/module/tcp/tcp.c
     weware_app/src/module/tcp/tcp_ops.c
