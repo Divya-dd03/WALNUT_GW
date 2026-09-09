@@ -16,6 +16,7 @@ Code/sdk/__pycache__
 
 
 #app
+Code/kernel/GW1NS-4/customer_app.bin
 
 #logs
 *.log
@@ -23,5 +24,7 @@ Code/sdk/__pycache__
 *.csv
 *.tsv
 
+#misc
 instructions.md
 .progress_meta
+z_logs/*
