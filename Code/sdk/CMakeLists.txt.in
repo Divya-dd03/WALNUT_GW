@@ -74,6 +74,7 @@ include_directories(
     wm_src/wm_ui_app
     wm_src/wm_lib
     wm_src/wm_lib/Inc
+    # weware app
     wm_src/weware_app
     wm_src/weware_app/inc
     wm_src/weware_app/inc/common

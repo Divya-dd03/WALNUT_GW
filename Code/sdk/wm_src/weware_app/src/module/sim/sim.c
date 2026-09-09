@@ -20,6 +20,7 @@
 // app
 #include "sim/sim.h"
 #include "module/module_manager.h"
+#include "module/network/network.h"  /* radio-restart gate, see detect task */
 #include "common/event_manager.h"
 #include "common/task_stats.h"
 
@@ -137,6 +138,27 @@ static void sim_detect_task_entry(void *arg)
         module_manager_update_uptime(MODULE_ID_SIM);
         (void)task_stats_update_periodic(g_sim_detect_task, "SIM", MODULE_ID_SIM,
                                          &g_sim_task_stats, 0);
+
+        /*
+         * Skip sampling while the network module is cycling the radio.
+         *
+         * The reference reads SIM presence from a hardware SIM-detect GPIO
+         * (pin 117, a tray switch), so AT+CFUN=0 cannot affect it and its
+         * "SIM present" signal is stable from boot. Walnut asks the MODEM
+         * instead (sdk_sim_get_status), and with the radio down that answers
+         * SDK_SIM_ABSENT. RESTART_CFUN holds the radio off for
+         * NETWORK_CFUN_OFF_SETTLE_MS + NETWORK_CFUN_ON_SETTLE_MS = 5 s, while
+         * this task polls at 1 s and needs 3 matches - so every radio restart
+         * used to fake a SIM removal: EVENT_SIM_UNAVAILABLE to every listener,
+         * and for SMS a cleared config latch plus a full reconfigure (delete-
+         * all included) issued exactly when the radio is down and those AT
+         * commands fail. Holding the sample here restores the reference's
+         * behaviour without needing the detect GPIO.
+         */
+        if (weware_network_get_state() == NETWORK_STATE_RESTART_CFUN) {
+            sdk_task_sleep(SIM_DETECT_POLL_MS);
+            continue;
+        }
 
         bool inserted = false;
         if (sim_sample_presence(&inserted) == SDK_RESULT_SUCCESS) {

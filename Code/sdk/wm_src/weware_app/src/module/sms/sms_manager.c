@@ -86,6 +86,13 @@
 #include "sdk_os.h"             /* reference: functionality/sdk_functionality_os.h */
 #include "sdk_sms.h"            /* reference: functionality/sdk_functionality_sms.h */
 #include "sdk_log.h"
+/* Kernel SMS API. Needed for wm_sms_set_preferred_storage() (AT+CPMS=...),
+ * which sdk_sms.h deliberately does NOT expose - sdk_sms_get_storage_status()
+ * is documented read-only - yet wm_sms_init() never sets the preferred store
+ * either, so without this the read/store memories are whatever the modem
+ * defaults to. Same "reach past the SDK to the kernel" pattern the UART port
+ * uses. No CG counterpart: the CG SDK selected the store inside sms_read. */
+#include "wm_sms_secure.h"
 
 #include "module/sms/sms_manager.h"
 #include "module/urc/urc_sms_queue_types.h"
@@ -103,7 +110,7 @@
  * Log Configuration
  *--------------------------------------------------------------*/
 #define LOG_TAG "SMS"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 /*===============================================================
@@ -141,13 +148,21 @@ static void* g_temp_msg_queue = NULL;
 static volatile BOOL g_sms_sim_inserted = FALSE;
 /* Latched in sms_configure() after a successful modem setup for current insert (SMS task only). */
 static BOOL s_sms_modem_config_applied = FALSE;
-/* Walnut addition: attempts spent on the current insert. The reference latched
- * unconditionally, which on walnut would leave a half-configured modem (the
- * storage-dependent AT commands answer ERROR while the SIM's SMS store is
- * still loading) with no retry. Bounded so a permanently failing modem cannot
- * turn the 100 ms task cycle into an AT-command flood. */
-static UINT8 s_sms_config_attempts = 0;
-#define SMS_CONFIG_MAX_ATTEMPTS 5U
+/* Walnut addition: retry state for the current SIM insert. The reference
+ * latched unconditionally, which on walnut leaves a half-configured modem: for
+ * the first few seconds after the SIM reports READY its SMS store is still
+ * loading and every storage-dependent AT command (AT+CMGD, AT+CPMS?) answers
+ * ERROR. Observed on-target 2026-09-08: attempts 1-2 failed, attempt 3 passed.
+ *
+ * Spacing matters more than the count - at the 100 ms task interval five
+ * back-to-back attempts cover only half a second, so a slower SIM would burn
+ * the whole budget before the store is ready. Retries are therefore spaced
+ * SMS_CONFIG_RETRY_INTERVAL_MS apart, giving a ~20 s window, and remain
+ * bounded so a permanently failing modem cannot flood the modem with ATs. */
+static UINT8  s_sms_config_attempts = 0;
+static UINT32 s_sms_config_last_attempt_ms = 0;
+#define SMS_CONFIG_MAX_ATTEMPTS       10U
+#define SMS_CONFIG_RETRY_INTERVAL_MS  2000U
 
 /*===============================================================
  * Forward Declarations
@@ -163,6 +178,7 @@ static Result sms_send_internal(const char *recipient, const char *message, UINT
 static void  sms_flush_temp_queue(void);
 static void  sms_park_incoming(const SdkSmsMessage *msg);
 static BOOL  sms_purge_store(void);
+static void  sms_log_store_status(const char *when);
 
 /*===============================================================
  * Utility Helpers
@@ -192,15 +208,28 @@ static void sms_park_incoming(const SdkSmsMessage *msg)
     memset(&urc_el, 0, sizeof(urc_el));
     urc_el.hdr = *msg;
     urc_el.hdr.text = NULL;   /* heap pointer must not escape into the ring buffer */
+    size_t raw_len = 0;
     if (msg->text) {
+        raw_len = strlen(msg->text);
         utils_strncpy_safe(urc_el.arg3_inline, msg->text, sizeof(urc_el.arg3_inline));
+    }
+
+    /* The raw +CMGR response must fit SMS_URC_TEXT_MAX or the body is cut. */
+    if (raw_len >= SMS_URC_TEXT_MAX) {
+        sdk_log_warning("SMS>rx3 TRUNCATED raw %u -> %u bytes (idx=%ld) - body may be cut",
+                        (unsigned)raw_len, (unsigned)(SMS_URC_TEXT_MAX - 1U),
+                        (long)msg->index);
     }
 
     if (queue_push(g_sms.module->config.urc_q,
                    &g_sms.module->config.urc_q_config,
                    &urc_el) != RESULT_SUCCESS) {
         sdk_log_error("ERR_SMS_MISSED: inbound SMS dropped, urc_q push failed"); /* ERRC */
+        return;
     }
+
+    sdk_debug_print("SMS>rx3 parked to urc_q idx=%ld raw_len=%u\r\n",
+                    (long)msg->index, (unsigned)raw_len);
 }
 
 /**
@@ -220,12 +249,18 @@ static void sms_flush_temp_queue(void)
 
     UINT32 msgcount = 0;
     if (sdk_sms_msgq_poll(g_temp_msg_queue, &msgcount) != SDK_RESULT_SUCCESS || msgcount == 0) {
-        return;
+        return;   /* silent: this runs every task cycle, do not log the idle case */
     }
+
+    sdk_debug_print("SMS>rx1 sdk queue: %u event(s) pending\r\n", (unsigned)msgcount);
 
     while (msgcount > 0) {
         SdkSmsMessage msg = {0};
         if (sdk_msgq_recv(g_temp_msg_queue, &msg, 0) == SDK_RESULT_SUCCESS) {
+            /* type: 0=INCOMING 1=READ_RESULT 2=DELETE_RESULT */
+            sdk_debug_print("SMS>rx2 evt type=%d status=%d idx=%ld text=%s\r\n",
+                            (int)msg.type, (int)msg.status, (long)msg.index,
+                            msg.text ? msg.text : "(none)");
             sms_park_incoming(&msg);      /* walnut addition: keep inbound SMS */
             /* reference: if (msg.arg3) sdk_memory_free((void*)msg.arg3); */
             sdk_sms_msg_free(&msg);
@@ -240,14 +275,42 @@ static void sms_flush_temp_queue(void)
 #define SMS_PURGE_MAX_INDEX 60U
 
 /**
+ * @brief Log the active SMS store name and occupancy (AT+CPMS?)
+ * @note WALNUT ADDITION, diagnostic. This is the only way to see which memory
+ *       +CMTI indexes refer to and whether messages are actually landing: if
+ *       `used` climbs after an inbound SMS but no SDK_SMS_EVT_INCOMING arrives,
+ *       delivery works and the notification/read path is at fault; if `used`
+ *       stays 0, the message never reached the device at all.
+ */
+static void sms_log_store_status(const char *when)
+{
+    char   store[12] = {0};
+    UINT32 used = 0;
+    UINT32 total = 0;
+
+    SdkResult ret = sdk_sms_get_storage_status(store, sizeof(store), &used, &total);
+    if (ret == SDK_RESULT_SUCCESS) {
+        sdk_log_info("SMS store %s: %u/%u used (%s)",
+                     store, (unsigned)used, (unsigned)total, when ? when : "");
+    } else {
+        sdk_log_warning("SMS store status unavailable (%s): %d",
+                        when ? when : "", (int)ret);
+    }
+}
+
+/**
  * @brief Empty the preferred SMS store one index at a time
- * @note WALNUT ADDITION - stands in for the reference's single
- *       sdk_sms_delete_all() call. The prebuilt walnut sdk_sms_delete_all()
- *       issues "AT+CMGD=0,4"; index 0 is out of range for the SIM store
- *       (indices are 1-based), so the modem answers ERROR and the call always
- *       fails on this kernel. This sweep asks AT+CPMS? how many slots are used
- *       (sdk_sms_get_storage_status - a walnut-extra API with no CG
- *       counterpart) and deletes in-range indices until that many are gone.
+ * @note WALNUT ADDITION - a fallback for the reference's single
+ *       sdk_sms_delete_all() call, which maps to "AT+CMGD=0,4". That command
+ *       answers ERROR for the first few seconds after the SIM reports READY
+ *       (the SIM's SMS store is still loading) and then starts working, so this
+ *       sweep only ever runs on the early attempts. It asks AT+CPMS? how many
+ *       slots are used (sdk_sms_get_storage_status - a walnut-extra API with no
+ *       CG counterpart) and deletes in-range indices until that many are gone.
+ * @note On-target 2026-09-08: while the store is not ready, AT+CPMS? fails too,
+ *       so this returns FALSE and sms_configure() simply retries. Kept because
+ *       it is the only way to clear the store should AT+CMGD=0,4 be rejected
+ *       for good on some modem/SIM.
  * @return TRUE when the store is - or already was - empty; FALSE if it could
  *         not be queried or could not be fully emptied.
  */
@@ -301,7 +364,16 @@ static void sms_forward_inbound(const sms_message_t *sms)
         cmd_request.data_len = (n >= 0) ? (UINT32)n : 0U;
     }
 
-    if (command_manager_accept_request(&cmd_request) != RESULT_SUCCESS)
+    /* Walnut addition: log the command text, not just its length. The reference
+     * logged neither; with only `content_len=NN` in the trace, correlating a
+     * bad reply back to the command that caused it means counting characters. */
+    Result rc = command_manager_accept_request(&cmd_request);
+
+    sdk_debug_print("SMS>rx8 -> CMD from='%s' cmd[%u]='%s' rc=%d\r\n",
+                    cmd_request.address, (unsigned)cmd_request.data_len,
+                    cmd_request.message, (int)rc);
+
+    if (rc != RESULT_SUCCESS)
         sdk_log_error("ERR_SMS_MISSED: Failed to queue inbound SMS command"); /* ERRC */
 }
 
@@ -395,7 +467,10 @@ Result sms_manager_delete(int index)
         return RESULT_SUCCESS;
     }
     g_sms.stats.delete_errors++;
-    sdk_log_error("ERR_SMS_DELETE_FAILED: index %d, result %d", index, (int)result); /* ERRC */
+    /* Expected for an inbound message: the kernel's wm_sms_task already deleted
+     * it after dispatching the incoming callback (see sms_process_urc). */
+    sdk_log_warning("SMS delete index %d failed (%d) - may already be gone",
+                    index, (int)result); /* ERRC ERR_SMS_DELETE_FAILED */
     return RESULT_ERROR;
 }
 
@@ -451,9 +526,10 @@ static void sms_send_task(void *arg)
                    urc_popped > 0U) {
                 /* reference: urc_el.hdr.msg_id == SDK_MSG_URC &&
                  *            urc_el.hdr.arg1 == SDK_URC_SMS_MASK */
+                sdk_debug_print("SMS>rx4 urc_q pop type=%d idx=%ld\r\n",
+                                (int)urc_el.hdr.type, (long)urc_el.hdr.index);
                 if (urc_el.hdr.type == SDK_SMS_EVT_INCOMING) {
                     urc_el.hdr.text = urc_el.arg3_inline;   /* reference: hdr.arg3 */
-                    sdk_debug_print("SMS URC (async): index=%ld\r\n", (long)urc_el.hdr.index);
                     sms_process_urc(&urc_el.hdr);
                 }
             }
@@ -471,6 +547,14 @@ static void sms_send_task(void *arg)
             const char *recipient = msg.address;
             const char *message_text = module_message_payload_ptr(&msg);
             size_t message_len = module_message_payload_len(&msg);
+
+            /* Everything the send queue handed us, before any interpretation:
+             * who produced it, the destination, the payload length and whether
+             * it is inline or a heap buffer. */
+            sdk_debug_print("SMS>tx1 msg_q pop src=%d dst=%d addr='%s' len=%u dyn=%d\r\n",
+                            (int)msg.source_module, (int)msg.destination_module,
+                            recipient ? recipient : "(null)",
+                            (unsigned)message_len, (int)msg.use_dynamic_buffer);
 
             if (recipient && recipient[0] != '\0' && message_text && message_len > 0)
             {
@@ -533,9 +617,37 @@ static Result sms_send_internal(const char *recipient, const char *message, UINT
     }
     text[message_len] = '\0';
 
+    /* Walnut addition: the reference logged nothing on success, which left the
+     * outbound half of an SMS command round-trip completely invisible (the
+     * kernel's own AT trace goes to the CP console, not this one). */
+    /* Log the exact body handed to the kernel. This is the discriminator for
+     * the corrupted-reply symptom seen 2026-09-08 (stale AT-command text
+     * prefixed to a reply): if the junk is already visible here the corruption
+     * is upstream (command manager / SMS_SEND_Q), if not it is inside
+     * wm_sms_send_text. */
+    sdk_debug_print("SMS>tx2 body to=%s [%u]: '%s'\r\n",
+                    recipient, (unsigned)message_len, text);
+
+    /* sdk_sms_send() blocks for the whole AT+CMGS exchange. Bracketing it makes
+     * the window visible in which other tasks' AT traffic can be swallowed by
+     * the modem's '>' prompt (see the CMGS-prompt note in the progress doc),
+     * and gives the elapsed time for the 60 s task-stall watchdog question. */
+    UINT32 t0 = utils_monotonic_ms_now();
+    sdk_debug_print("SMS>tx3 sdk_sms_send ENTER (AT+CMGS window opens)\r\n");
     SdkResult result = sdk_sms_send(recipient, text);
-    return (result == SDK_RESULT_SUCCESS) ?
-            RESULT_SUCCESS : (sdk_log_error("ERR_SMS_SEND_FAILED: result %d", (int)result) /* ERRC */ , RESULT_ERROR);
+    sdk_debug_print("SMS>tx4 sdk_sms_send EXIT rc=%d after %u ms\r\n",
+                    (int)result, (unsigned)utils_monotonic_ms_elapsed(t0));
+
+    if (result == SDK_RESULT_SUCCESS) {
+        sdk_log_info("SMS sent to %s (%u chars, %u ms)",
+                     recipient, (unsigned)message_len,
+                     (unsigned)utils_monotonic_ms_elapsed(t0));
+        return RESULT_SUCCESS;
+    }
+    sdk_log_error("ERR_SMS_SEND_FAILED: to %s, result %d (%u ms)",
+                  recipient, (int)result,
+                  (unsigned)utils_monotonic_ms_elapsed(t0)); /* ERRC */
+    return RESULT_ERROR;
 }
 
 /*===============================================================
@@ -564,7 +676,10 @@ static void sms_process_urc(const SdkSmsMessage *msg)
         return;
     }
 
-    sdk_debug_print("SMS URC: parsed index: %d\r\n", index);
+    /* The complete raw +CMGR response as received, before parsing - this is
+     * what sms_extract_fields() has to work with. */
+    sdk_debug_print("SMS>rx5 process idx=%d raw='%s'\r\n",
+                    index, msg->text ? msg->text : "(null)");
 
     sms_message_t sms = {0};
     BOOL have_message = FALSE;
@@ -580,22 +695,43 @@ static void sms_process_urc(const SdkSmsMessage *msg)
         sms.is_read = TRUE;
         g_sms.stats.total_received++;
         have_message = TRUE;
-        sdk_debug_print("SMS URC: inline text parsed - sender=%s, content_len=%u\r\n",
-                  sms.sender_number, (unsigned)strlen(sms.message_content));
+        sdk_debug_print("SMS>rx6 inline parse OK sender='%s' body[%u]='%s'\r\n",
+                        sms.sender_number,
+                        (unsigned)strlen(sms.message_content),
+                        sms.message_content);
     } else {
+        sdk_debug_print("SMS>rx6 no usable +CMGR text -> re-reading index %d\r\n", index);
         have_message = sms_read_message(index, &sms);
     }
 
     if (!have_message)
     {
+        sdk_log_warning("SMS>rx7 no message for index %d - discarding", index);
         sms_manager_delete(index);
         return;
     }
 
-    if (sms_is_valid_sender(sms.sender_number) && sms_is_valid_content(sms.message_content))
-        sms_forward_inbound(&sms);
+    {
+        BOOL sender_ok  = sms_is_valid_sender(sms.sender_number);
+        BOOL content_ok = sms_is_valid_content(sms.message_content);
 
-    sms_manager_delete(index);
+        sdk_debug_print("SMS>rx7 validate sender=%s content=%s\r\n",
+                        sender_ok ? "OK" : "REJECT", content_ok ? "OK" : "REJECT");
+
+        if (sender_ok && content_ok)
+            sms_forward_inbound(&sms);
+    }
+
+    /* Reference deleted the message here, and so do we. WALNUT NOTE: for the
+     * INCOMING path the kernel has ALREADY deleted it - wm_sms_task calls
+     * wm_sms_delete_message(index, 0) right after invoking the incoming
+     * callback - so this AT+CMGD usually answers ERROR and bumps
+     * stats.delete_errors. Harmless, and still required for the
+     * sms_read_message() fallback path above, which does not auto-delete. */
+    {
+        Result del = sms_manager_delete(index);
+        sdk_debug_print("SMS>rx9 delete idx=%d rc=%d (rx done)\r\n", index, (int)del);
+    }
 }
 
 /*===============================================================
@@ -619,10 +755,12 @@ static BOOL sms_read_message(INT32 index, sms_message_t *out)
     sdk_debug_print("Reading SMS at index %d\r\n", (int)index);
     sms_flush_temp_queue();
 
-    /* Read SMS from the SIM store.
-     * Reference passed the literal storage id 1 (its SDK's TEXT/ME selector).
-     * WALNUT DIFFERENCE: 1 == SDK_SMS_STORAGE_ME here, while received messages
-     * live in SM (the store +CMTI reports), so the named SM selector is used. */
+    /* Read SMS by index (reference passed the literal storage id 1).
+     * NOTE: walnut's sdk_sms_read() IGNORES its `storage` argument - the
+     * disassembly shows it forwarding only the index to
+     * wm_sms_read_message(index, resp, resp_len), i.e. a bare "AT+CMGR=<index>"
+     * against whatever AT+CPMS has selected. The named selector below is
+     * therefore documentation only; it changes nothing on this kernel. */
     SdkResult read_result = sdk_sms_read(SDK_SMS_STORAGE_SM, (UINT32)index, g_temp_msg_queue);
     if (read_result != SDK_RESULT_SUCCESS) {
         sdk_log_error("SMS read: sdk_sms_read failed for index %d, result=%d", (int)index, (int)read_result);
@@ -821,6 +959,7 @@ static void sms_configure(void)
     if (!g_sms_sim_inserted) {
         s_sms_modem_config_applied = FALSE;
         s_sms_config_attempts = 0;
+        s_sms_config_last_attempt_ms = 0;
         return;
     }
 
@@ -833,12 +972,21 @@ static void sms_configure(void)
         return;
     }
 
+    /* Walnut addition: space out retries (see s_sms_config_attempts above) so
+     * the SIM's SMS store gets real time to come up instead of the whole budget
+     * being spent inside half a second of task cycles. */
+    if (s_sms_config_attempts > 0 &&
+        utils_monotonic_ms_elapsed(s_sms_config_last_attempt_ms) < SMS_CONFIG_RETRY_INTERVAL_MS) {
+        return;
+    }
+
     /* Also attaches g_temp_msg_queue as the incoming-SMS route (walnut:
      * sdk_sms_msgq_poll) - must happen before sdk_sms_init() turns +CMTI on so
      * no arrival is missed. */
     sms_flush_temp_queue();
 
     s_sms_config_attempts++;
+    s_sms_config_last_attempt_ms = utils_monotonic_ms_now();
     sdk_debug_print("Configuring SMS settings (attempt %u)\r\n", (unsigned)s_sms_config_attempts);
 
     SdkResult ret = -1;
@@ -857,16 +1005,50 @@ static void sms_configure(void)
         return;   /* retry on the next task cycle */
     }
 
+    /* What the modem defaulted to, before we touch anything (diagnostic). */
+    sms_log_store_status("default");
+
+    { /* select the SMS store explicitly
+       * WALNUT GAP: neither sdk_sms.h nor wm_sms_init() ever issues AT+CPMS, so
+       * the read/write/receive memories stay at the modem default. That matters
+       * because the kernel's inbound path is index-based: wm_sms_cmti_cb gets
+       * "+CMTI: <mem>,<idx>" and wm_sms_task then does a bare AT+CMGR=<idx>
+       * against mem1. If mem1 != the store +CMTI reported, the read FAILS and
+       * wm_sms_task drops the message WITHOUT calling the incoming callback -
+       * an inbound SMS vanishes with no trace on our side. Pinning all three to
+       * "SM" makes +CMTI, AT+CMGR and AT+CMGD agree on SIM storage.
+       * UPDATE 2026-09-08: the vendor demo reports `storage SM: 0/10 used` out
+       * of the box, so mem1 was already SM and this mismatch is NOT what is
+       * breaking inbound SMS here. Kept as a cheap guarantee (and it pins mem3,
+       * which AT+CPMS? does not report), but demoted to non-essential. */
+        int cpms = wm_sms_set_preferred_storage("SM", "SM", "SM");
+        if (cpms == 0) {
+            sdk_debug_print("SMS preferred storage set to SM/SM/SM\r\n");
+            sms_log_store_status("after CPMS");
+        } else {
+            /* NOT essential - deliberately does not clear essential_ok. The
+             * vendor demo's "SMS: Storage status" shows this modem already
+             * defaults to `storage SM: 0/10 used`, so the pin is belt-and-
+             * braces; some modems also reject the three-argument CPMS form.
+             * Failing it must not trigger the retry ladder. */
+            sdk_log_warning("SMS preferred storage set failed: %d (keeping modem default)",
+                            cpms);
+        }
+    }
+
     { /* delete previous SMS in SIM */
         ret = sdk_sms_delete_all(g_temp_msg_queue);
         if (ret == SDK_RESULT_SUCCESS) {
             sdk_debug_print("SMS: deleted all messages\r\n");
         } else if (ret != SDK_RESULT_NOT_SUPPORTED) {
-            /* WALNUT SDK DEFECT: sdk_sms_delete_all() issues "AT+CMGD=0,4" -
-             * index 0 is out of range for the SIM store (indices start at 1), so
-             * the modem answers ERROR and this always returns -1 on this kernel.
-             * Fall back to a bounded per-index sweep using the (walnut-extra)
-             * storage query, which uses only in-range indices. */
+            /* sdk_sms_delete_all() issues "AT+CMGD=0,4" (wm_sms_delete_message
+             * with index 0, delflag 4). On-target 2026-09-08 this answers ERROR
+             * on the first attempts after the SIM reports READY and then
+             * succeeds - the SIM's SMS store is still loading, not an index
+             * problem: AT+CPMS? (no index at all) fails in exactly the same
+             * window. So the retry in sms_configure() is what actually fixes
+             * this; the per-index sweep below is a fallback for a modem/SIM
+             * that rejects AT+CMGD=0,4 permanently. */
             sdk_debug_print("SMS: delete all returned %d, sweeping per-index\r\n", (int)ret);
             if (!sms_purge_store()) {
                 essential_ok = FALSE;
@@ -875,7 +1057,7 @@ static void sms_configure(void)
     }
 
     { /* set SMS character format*/
-        ret = sdk_sms_set_format((UINT8)g_sms.config->format_mode);
+        ret = sdk_sms_set_format((UINT8)g_sms.config->format_mode); // text mode
         if (ret == SDK_RESULT_SUCCESS) {
             sdk_debug_print("SMS format set to %u\r\n", (unsigned)g_sms.config->format_mode);
         } else if (ret != SDK_RESULT_NOT_SUPPORTED) {
@@ -926,6 +1108,9 @@ static void sms_configure(void)
 
     if (essential_ok) {
         sdk_log_info("SMS modem configured");
+        /* Baseline for the inbound test: `used` should be 0 here, and should
+         * climb the moment an SMS is delivered to the device. */
+        sms_log_store_status("configured");
     } else {
         sdk_log_error("ERR_SMS_CONFIG_FAILED: giving up after %u attempts - "
                       "inbound SMS may not work", (unsigned)s_sms_config_attempts); /* ERRC */

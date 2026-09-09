@@ -347,7 +347,7 @@ void sTask_WM_UIProcesser(void *arg)
         /* --------------------------------------------------------- SMS: Send */
         case WM_DEMO_SMS_SEND:
         {
-            const char *sms_dest_number = "7814304806";
+            const char *sms_dest_number = "9952929341";
             const char *sms_body        = "WEGW Common Gateway SMS demo";
             SdkResult   sr;
 

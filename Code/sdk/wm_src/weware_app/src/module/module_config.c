@@ -124,11 +124,19 @@ static Module g_module_cmd = {
         .config_ptr = &g_command_config,
         .config_size = sizeof(CommandConfig),
         .config_stored = TRUE,
+        /* thread_safe deliberately TRUE, unlike the reference's FALSE: this
+         * queue has TWO producers on other tasks (the SMS task via
+         * command_manager_accept_request, the TCP task via its recv path) and
+         * is drained by the command task. queue_manager only creates a mutex
+         * when thread_safe is set (q->mutex stays NULL otherwise), so the
+         * reference value leaves the ring buffer completely unlocked across
+         * tasks - a latent CG bug, not a port artifact. Observed 2026-09-08 as
+         * duplicated/corrupted SMS command replies. */
         .msg_q_config = {
             .name = "CMD_REQUEST_Q",
             .element_size = sizeof(ModuleMessage),
             .capacity = 5,
-            .thread_safe = FALSE,
+            .thread_safe = TRUE,
             .max_file_size = 0,
             .persist_on_reboot = FALSE
         },
@@ -303,12 +311,16 @@ static Module g_module_sms = {
         /* Outbound SMS + command replies routed back to the originating phone
          * number (reference SMS_SEND_Q): filled by sms_manager_send and by
          * utils_route_response_to_module, drained one per cycle by the SMS
-         * task. */
+         * task.
+         * thread_safe deliberately TRUE, unlike the reference's FALSE: the
+         * producer is the COMMAND task (utils_route_response_to_module) and the
+         * consumer is the SMS task, and queue_manager only creates a mutex when
+         * this flag is set - see the CMD_REQUEST_Q note above. */
         .msg_q_config = {
             .name = "SMS_SEND_Q",
             .element_size = sizeof(ModuleMessage),
             .capacity = 5,
-            .thread_safe = FALSE,
+            .thread_safe = TRUE,
             .max_file_size = 0,
             .persist_on_reboot = FALSE
         },

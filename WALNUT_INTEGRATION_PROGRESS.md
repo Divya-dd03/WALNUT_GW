@@ -34,14 +34,14 @@
 |---|---|---|---|
 | System infra (events, queues, config store, module framework, reset, storage, time) | ✅ 2026-08-20 | Near-verbatim via compat shims | Board pins / ADC channels unconfirmed |
 | GPS (manager, ops, triggers, config, packet, storage, NMEA parse) | ✅ 2026-08-21 | Triggers/packet/storage/NMEA-parse ~100 % logic parity (HDOP + RMC/GGA cross-check live) | 5 packet fields placeholder; msg_q/BLE append dead |
-| TCP (state machine, ops, login, socket layer) | ✅ 2026-08-21 | 15-state FSM + login packet + store-and-forward send path full parity; recv → command_manager (CG-verbatim, 2026-08-27) | Not runtime-tested over TCP |
+| TCP (state machine, ops, login, socket layer) | ✅ 2026-08-21 | 15-state FSM + login packet + store-and-forward send path full parity; recv → command_manager (CG-verbatim, 2026-08-27). **Store-and-forward behaviorally validated 2026-09-08** (offline backlog survives network-timeout reset, drains login → backlog ascending → live, verified server-side) | Recv/command path over TCP and 100 s idle keepalive not runtime-tested |
 | Network (16-state manager, config, health check) | ✅ 2026-08-21 | State enum, 4-way health check, timeout table, EVENT_RESET_SOFT escalation, NetworkConfig persistence — CG parity | state_timeout framework hand-rolled; CFUN settle 2+3 s vs CG 1 s |
 | SIM (detect + debounce, events) | ✅ 2026-08-21 | Debounce verbatim; EVENT_SIM_* broadcasts + connected tracking | CPIN-4/6 removal detection (CG network_ops) not ported |
 | URC processor | ✅ 2026-08-21 | Drain loop + fan-out (CG pattern on bare event codes) | SMS inlining / NMEA assembler moot (kernel emits no such URCs) |
 | Vehicle state (ign/motion debounce) | ✅ 2026-08-20 | Logic verbatim | Accelerometer inputs stubbed FALSE |
 | Main / boot flow | ✅ 2026-08-20 | CG structure (system → modules → supervised loop) | Init failures log-and-continue (CG reboots) |
 | Command manager (manager, handler, config) | ✅ 2026-08-26 compiled | CG command table + waterfall state machine verbatim; API renamed to walnut (`weware_tcp_*`, `weware_sim_*`, `weware_network_*`) | The CG-verbatim binary-frame `STM:` path + PING-STM are written and compile, but `UART_UNAVAILABLE` is **restored** (2026-09-07) pending the STM port, so both still reply "unavailable". DIGOUT likewise gated via `DIGOUT_UNAVAILABLE`; not runtime-tested |
-| SMS (manager, config, URC queue types) | ✅ 2026-09-07 compiled | Task loop / URC→read→validate→forward→delete pipeline / `+CMGR` parser / SIM-gated modem config / stats / init-deinit **line-for-line**; inbound feed re-sourced (see §3.6) | walnut `sdk_sms_send` is blocking + text-mode only (no per-message format/len/msgq); not runtime-tested |
+| SMS (manager, config, URC queue types) | ✅ **2026-09-08 working on target** | Task loop / URC→read→validate→forward→delete pipeline / `+CMGR` parser / SIM-gated modem config / stats / init-deinit **line-for-line**; inbound feed re-sourced (see §3.6). Inbound → command → SMS reply verified end-to-end (§3.6.6) | walnut `sdk_sms_send` is blocking + text-mode only (no per-message format/len/msgq) — 60 s task-stall watchdog risk on a slow network still unmeasured; SIM re-insert path untested |
 | UART (manager + `sdk_walnut_uart` adapter + `stm_binary_protocol`, `stm_command_map`) | ⚠️ 2026-09-07 compiled, **DISABLED** | State machine / frame reassembler / response builders / opcode correlation / PING-STM **byte-identical**; RX path re-sourced and the SDK's broken `sdk_uart_*` replaced by an in-app `drvUart*` adapter (see §3.7) | Adapter **out of the build** + module `enabled=FALSE` + `UART_UNAVAILABLE` restored, after `DRV_UART_PORT_4` reset the device. Usable ports now identified (idx 1 or **idx 2**); re-enable in 3 steps once the STM's port is confirmed. Also `HEALTH_PACKET_UNAVAILABLE` + `FILE_TRANSFER_UNAVAILABLE` |
 | BLE, OTA (partial), digout, accel, file-transfer | ❌ not ported | — | See §5 |
 
@@ -92,6 +92,11 @@ The five reference files supplied (`module_config.c`, `module_manager.c`, `syste
 - **Ops (`gps_ops.c`):** jump filter (500 km/h, 5-sample streak), time-source AUTO chain, speed filter/backfill, send-kind decision (charge/fix/last-valid-merged), fix transitions, config retry ladder — all verbatim. Charge/ign/motion inputs come from latches (now fed by vehicle_state/system_manager) instead of `PowerInfo`.
 - **Config (`gps_config.c`):** 17-key parser + validate-then-apply verbatim; walnut adds `gps_config_defaults_applied()` so `config_load_from_file` values survive init.
 - **NMEA parse family ported 2026-08-21 (CG URC-build parity):** the kernel DOES expose raw NMEA — `sdk_gps_set_nmea_callback()` (sdk_gps.h) delivers complete sentences from the GNSS parser task. Feed: gps_manager.c pairs RMC+GGA (CG's urc_processor pairing; no 768-byte fragment reassembler needed — sentences arrive whole) → `GPS_URC_Q` (capacity 4). Parse: the full CG family verbatim in gps_ops.c — combined GNRMC/GNGGA parser, RMC↔GGA 200 m cross-check, HDOP ×100 (packet byte now real), RMC time+date→unix, drain-keep-newest, 20-cycle stall recovery (re-registers the callback vs CG's NMEA-by-URC re-enable). **Strict CG structure: the NMEA queue is the sole source — empty queue = parse fail → 60-fail reboot escalation.** The validated navdata poll is kept as a compiled-out backup: build with `-DGPS_QUERY_NAVDATA_POLL` to revert (mirrors CG's `#if SDK_URC_GNSS_MASK` split). Walnut deltas: talker accepts `$GP` alongside `$GN`; queue element has no `sdk_msg_t` header.
+- **SDK NMEA chain audited 2026-09-09 (disassembly — `sdk_gps.h` has no in-tree implementation).** Prompted by a 1 Hz `GPS query and parse failed` stream on target that turned out to be a run with the **GNSS module not switched on** (empty queue = the documented parse-fail path; no defect, no change made). What the audit established, from `sdk_gps.c.obj` (`lib_wmsrc_B.a`) and `wm_gps_secure.c.obj` (`lib_wmsrc.a`):
+  - `sdk_gps_init` carries the same `validate_board == 1` gate as `sdk_uart`/`sdk_ota`/`sdk_file` (passing on this unit — ADC and OTA work); on pass it calls `wm_gps_init` and registers `prv_gps_fix_cb`/`prv_gps_nmea_cb` via `wm_gps_set_fix_cb`/`wm_gps_set_nmea_cb`. `sdk_gps_set_nmea_callback` merely stores into `s_gps_nmea_cb` when `s_gps_inited`, else returns **-4** (`NOT_INITIALIZED`) — a case `gps_manager_nmea_feed_register` already logs, so registration failure is distinguishable from a silent feed.
+  - `wm_gps_init` → mutexes + 16-deep `osiMessageQueue` + `gps_task` (4 KB, prio 226) + `wm_nmea_reset` + `wm_gps_power_on`. `wm_gps_power_on` → `wm_GPS_EN(0)`/15 ms/`wm_GPS_EN(1)`, pin-mux check (`GPS_UART_TX/RX_MUX`), attach `gps_uart_rx_cb`, `wm_gps_uart_init` (115200 8N1), then the receiver's ASCII config: `$POLCFGSYS,193` (0xC1 = GPS|GLO|GAL), `$POLCFGNAV,1` (1 Hz), `$POLCFGMSG,0,<id>,<0|1>` per sentence — **GGA (0) ON, RMC (5) ON**, GSA (1)/GSV (2)/VTG (3) OFF — then `$POLCFGMSG,1,…` (`wm_gps_start`).
+  - **The receiver is therefore configured to emit exactly the RMC+GGA pair `gps_manager.c` pairs on**, so the feed → `GPS_URC_Q` → combined-parse path needs nothing changed once the module is powered. RX: `gps_uart_rx_cb` feeds bytes into `wm_nmea_feed`; a complete line is `osiMalloc`'d and posted to `gps_task`, which invokes the raw-sentence callback (whole sentences, hence no fragment reassembler).
+  - Message-id map (`wm_lib/Inc/wm_gps_secure.h`): GGA 0, GSA 1, GSV 2, VTG 3, RMC 5, ZDA 20 — the ids to pass if `wm_gps_set_sentence` is ever driven directly.
 - **Missing vs CG:**
   2. GPS module msg_q (`gps_ops_pop_gps_msg_queue` stubbed) ⇒ BLE send-with-GPS append and trigger reason 5 dead.
   3. ~~Login-with-GPS append~~ ✅ 2026-08-21 — called from TCP `SENDING_LOGIN` when `loginwithgps` set.
@@ -181,14 +186,171 @@ Configuring SMS settings   SMS: delete all returned -1   SMS format set to 1
 
 `AT+CMGF` and `AT+CSCS` (ME-local) passed; both storage/service-dependent commands returned −1. Diagnosed by disassembling the prebuilt `sdk_sms.c.obj` (lib_wmsrc_B.a) and `wm_sms_secure.c.obj` (lib_wmsrc.a):
 
-1. **`sdk_sms_delete_all()` is broken in the SDK.** It calls `wm_sms_delete_message(index = 0, delflag = 4)` → `AT+CMGD=0,4`. SIM store indices are 1-based, so index 0 is out of range and the modem answers ERROR — this call can **never** succeed on this kernel. Fix: `sms_purge_store()`, a bounded per-index sweep that reads occupancy with `sdk_sms_get_storage_status()` (`AT+CPMS?`) and deletes in-range indices via `sdk_sms_delete()` (`AT+CMGD=<i>,0`) until `used` slots are gone, capped at `SMS_PURGE_MAX_INDEX` (60). Runs only as a fallback, after the CG-verbatim `sdk_sms_delete_all()` attempt.
+1. **`sdk_sms_delete_all()` fails until the SIM's SMS store has loaded.** It calls `wm_sms_delete_message(index = 0, delflag = 4)` → `AT+CMGD=0,4`. Fix: `sms_purge_store()`, a bounded per-index sweep that reads occupancy with `sdk_sms_get_storage_status()` (`AT+CPMS?`) and deletes in-range indices via `sdk_sms_delete()` (`AT+CMGD=<i>,0`) until `used` slots are gone, capped at `SMS_PURGE_MAX_INDEX` (60), plus a retry (below). Runs only as a fallback, after the CG-verbatim `sdk_sms_delete_all()` attempt.
+
+   > **Corrected 2026-09-08 (second on-target run).** The first diagnosis here was that index 0 is out of range for a 1-based SIM store, making `AT+CMGD=0,4` permanently unusable. **That was wrong** — the run below shows it failing on attempts 1-2 and *succeeding* on attempt 3, and `AT+CPMS?` (which takes no index at all) fails in exactly the same window. The real cause is readiness: for the first seconds after the SIM reports `status=2` (READY) its SMS store is still loading and every storage-dependent AT command answers ERROR. The **retry** is what fixes this; the per-index sweep is kept only as a fallback for a modem/SIM that rejects `AT+CMGD=0,4` for good.
 
 2. **CG's CNMI parameters are wrong for walnut — and would have silently broken reception had they been accepted.** CG passes `(1, 2, 1, 0, 0)` → `AT+CNMI=1,2,1,0,0`: `mt=2` routes SMS-DELIVER **straight to the TE as +CMT** and `bm=1` routes cell broadcasts to the TE. This modem rejects the combination, but the important point is the walnut inbound hook is a **+CMTI** callback (`smsSetCmtiCallback` / `wm_sms_cmti_cb`, kernel log `sms cmti: storage=%s, index=%d`), which only fires when the message is **stored and indicated** — i.e. `mt=1`. `wm_sms_init()` already applies `AT+CNMI=2,1,0,0,0` (plus `AT+CMGF=1`, `AT+CSCS="GSM"`), so the failing override was the only thing that could have taken the pipeline out of +CMTI mode. Changed to assert the kernel's own values: `sdk_sms_set_new_msg_ind(2, 1, 0, 0, 0)`.
 
 **Also changed while fixing these:**
-- `sms_configure()` latched `s_sms_modem_config_applied = TRUE` unconditionally (CG behaviour), so a partially-configured modem was never retried. It now retries up to `SMS_CONFIG_MAX_ATTEMPTS` (5) when an *essential* call fails (format / CNMI / charset / purge), then latches anyway with an error — bounded so a permanently failing modem cannot turn the 100 ms task cycle into an AT flood. The counter resets on SIM removal.
+- `sms_configure()` latched `s_sms_modem_config_applied = TRUE` unconditionally (CG behaviour), so a partially-configured modem was never retried. It now retries when an *essential* call fails (format / CNMI / charset / purge), then latches anyway with an error. The counter and timestamp reset on SIM removal.
 - Every `sdk_debug_print()` in the module was missing `\r\n`, which is why the log above runs together — all 15 now terminate their lines.
 - Noted in code: the prebuilt `sdk_sms_init()` is `wm_sms_init()` + `wm_sms_set_incoming_cb()` with a hardcoded `return 0` — it can never report failure, so that error branch is dead code (kept for API correctness).
+
+#### 3.6.2 Second on-target run (2026-09-08) — SMS configuration ✅ working
+
+Boot 1 (cold SIM), showing the retry doing its job:
+
+```
+SIM status: UNAVAILABLE -> AVAILABLE
+Configuring SMS settings (attempt 1)
+SMS: delete all returned -1, sweeping per-index
+[WARN] SMS purge: storage query failed: -1        <- AT+CPMS? not ready either
+SMS format set to 1
+SMS new message indication configured (+CMTI)     <- the CNMI fix works
+SMS charset set to GSM 7-bit
+[WARN] SMS modem config incomplete, retrying (1/5)
+... attempt 2 identical ...
+Configuring SMS settings (attempt 3)
+SMS: deleted all messages                         <- store now ready
+SMS format set to 1
+SMS new message indication configured (+CMTI)
+SMS charset set to GSM 7-bit
+[INFO] SMS modem configured
+```
+
+Boot 2 (warm modem) completed on attempt 1. Both CNMI and the delete now succeed, so `sms_configure()` reaches its latch with everything applied and the +CMTI pipeline armed.
+
+**Follow-up fix — retry spacing.** The run above succeeded on attempt 3, but only by luck: attempts were one task cycle apart, so `SMS_CONFIG_MAX_ATTEMPTS` (5) covered just **500 ms**. A slower SIM would exhaust the budget before the store came up and latch a half-configured modem. Retries are now spaced `SMS_CONFIG_RETRY_INTERVAL_MS` (2000) apart with the cap raised to 10 — a ~20 s window — using `utils_monotonic_ms_now()/_elapsed()`. Still bounded, so a permanently failing modem cannot flood the modem with ATs.
+
+#### 3.6.3 Why no SMS arrives yet (2026-09-08) — checked against the vendor demo
+
+Cross-checked `wm_ui_app.c`'s `WM_DEMO_SMS_*` cases against the port and disassembled the delivery path. **The plumbing is correct:**
+
+- `sdk_sms_msgq_poll()` stores the queue pointer into the SDK's incoming-route global **before** reading the pending count, and unconditionally — so the demo's "attach the queue *before* `sdk_sms_init()`, so no arrival is missed" requirement is satisfied by our `sms_flush_temp_queue()` even on the cycle where it finds nothing pending. `sdk_sms_read/_delete/_delete_all` re-register it too.
+- `prv_sms_incoming_cb(storage, index, raw)` builds `{type = SDK_SMS_EVT_INCOMING, status = 0, index, text = osiMalloc-copy of raw}` and hands it to `prv_sms_deliver()`, which `osiMessageQueueTryPut`s it into that registered queue. It drops the message (freeing `text`) **only** if the queue pointer is NULL or the queue is full — ours is registered and drained every 100 ms with 16 slots, so neither applies.
+
+**So the blocker is upstream of SMS: the radio never came up in either boot.** Both logs stay in `RESTART_CFUN` (`NET CFUN=0` → `PDP_INACTIVE` → `NET_DISCONNECTED`) and never reach a registered/CONNECTED state; TCP sits in `WAIT_NETWORK` throughout. With no network attach the network cannot deliver an inbound SMS and `AT+CMGS` cannot succeed either. `SMS modem configured` only proves the ME-local (`AT+CMGF`/`AT+CSCS`) and SIM-store (`AT+CMGD`) commands work — it says nothing about service. **Get the network registered first, then re-test SMS.**
+
+**Related interaction, worth knowing (affects SIM + network, not only SMS):** `[INFO] SIM modem status=1` (`SDK_SIM_ABSENT`) appears immediately after `NET CFUN=0`. SIM presence is polled *through the modem* (`sdk_sim_get_status`), so with the radio off it legitimately reads ABSENT. The CFUN restart holds the radio down for `NETWORK_CFUN_OFF_SETTLE_MS` + `NETWORK_CFUN_ON_SETTLE_MS` = 5 s, while the detect task polls at 1 s and needs 3 matches — so **every CFUN restart makes the SIM look removed for ~3 s** and broadcasts `EVENT_SIM_UNAVAILABLE`. For SMS that clears `s_sms_modem_config_applied` and the config is simply re-applied on the next "insert" (self-healing, but it re-runs `delete_all` each cycle). For the network it means a spurious SIM-removed event lands mid-restart. A CFUN-aware suppression in the SIM detect task is the obvious fix; not done here.
+
+**Correction to §3.6.1's storage note:** walnut's `sdk_sms_read()` **ignores its `storage` argument** — the disassembly forwards only the index to `wm_sms_read_message(index, resp, resp_len)`, i.e. a bare `AT+CMGR=<index>` against whatever `AT+CPMS` selected. So the earlier `SDK_SMS_STORAGE_ME` vs `_SM` discussion was moot; the named selector is documentation only.
+
+**Still to watch on send:** `sdk_sms_send()` is blocking (`AT+CMGS` via `atCmdSendWaitResp`). With the network down, a queued command reply will block the SMS task inside that call — the module-manager task-stall watchdog is 60 s.
+
+#### 3.6.4 Network up, inbound SMS still not arriving (2026-09-08) — kernel SMS-task findings
+
+Third run: network reached `NET connection UP` / IP `10.159.178.207`, TCP opened a socket, SMS configured on attempt 2. An SMS was sent to the device and produced no reply and **no `SMS URC (async)` line**, so the SDK never posted an `SDK_SMS_EVT_INCOMING`. Disassembling `wm_sms_task` (lib_wmsrc.a) explains how that can happen silently and turned up two gaps:
+
+1. **`wm_sms_task` drops the message without calling the incoming callback when the read fails.** Its loop is: wait on the kernel SMS queue → check msg id == 8 → `wm_sms_read_message(index, resp, 512)` (a bare `AT+CMGR=<index>`) → **if that returns non-zero it frees and loops**; only on success does it `blx` the registered callback. So one failed `AT+CMGR` and the SMS is gone with no trace anywhere in our code.
+
+2. **Nothing ever issues `AT+CPMS`.** `wm_sms_init()` sets only `AT+CMGF=1`, `AT+CSCS="GSM"` and `AT+CNMI=2,1,0,0,0`; `sdk_sms.h` exposes just the read-only `sdk_sms_get_storage_status()`. So the read/write/receive memories stay at the modem default. Combined with (1) this is a real failure mode: `+CMTI: <mem>,<idx>` reports the *receive* store while `AT+CMGR=<idx>` reads *mem1* — if they differ, every inbound SMS is silently discarded.
+
+   **Fix:** `sms_configure()` now pins all three to SIM storage via `wm_sms_set_preferred_storage("SM", "SM", "SM")`, declared in `wm_lib/Inc/wm_sms_secure.h` and linked from `lib_wmsrc.a` — the same "reach past the SDK to the kernel" pattern the UART port uses, because `sdk_sms.h` has no equivalent. Non-fatal and retried (it fails while the store is still loading, like the other storage commands).
+
+3. **Diagnostics added** (`sms_log_store_status()`): the active store name + `used/total` is logged at three points — `default` (before we change anything), `after CPMS`, and `configured`. This is the discriminator for the next run: if `used` climbs after an inbound SMS but no `SMS URC (async)` appears, delivery works and the notification/read path is at fault; if `used` stays 0, the message never reached the device.
+
+4. **The kernel deletes the message itself.** After invoking the incoming callback, `wm_sms_task` calls `wm_sms_delete_message(index, 0)`. So the CG-verbatim `sms_manager_delete(index)` at the end of `sms_process_urc` normally answers ERROR for the inbound path. Kept (CG parity, and still needed by the `sms_read_message()` fallback, which does not auto-delete) but its log is downgraded from error to `SMS delete index %d failed (%d) - may already be gone`.
+
+**The definitive next diagnostic:** `wm_sms_cmti_cb` logs `sms cmti: storage=%s, index=%d` via `RTI_LOG` *before* doing anything else. If that line appears when an SMS is sent, +CMTI is reaching the kernel and the fault is downstream (the `AT+CMGR` above). If it does not appear, the modem never raised +CMTI — a service/CNMI matter, not an app one. Note `RTI_LOG` targets the CP/Seagull debug console (drvUart port 0), which may not be the USB VCOM stream the app logs go to, so check both.
+
+#### 3.6.5 Vendor-demo comparison (2026-09-08) — outbound works, store is already SM
+
+Ran the vendor demo (`-t wm_app_main`) on the same unit. Two hard facts:
+
+- **`SMS: Storage status` → `storage SM: 0/10 used`.** The modem's default read store is **already SM**, so the mem1-vs-receive-store mismatch theorised in §3.6.4 is **not** what is breaking inbound SMS. The `wm_sms_set_preferred_storage("SM","SM","SM")` pin is kept (it also fixes mem3, which `AT+CPMS?` does not report) but is now **non-essential** — it no longer clears `essential_ok`, because a modem that rejects the three-argument CPMS form would otherwise trigger the full 10-attempt retry ladder and a false "giving up" error. Note the store holds only **10 slots**.
+- **Outbound SMS works.** `SMS: Send` → `send "WEGW Common Gateway SMS demo" to 9952929341 -> ok`, ~1.1 s for the blocking `AT+CMGS`. So the modem, SIM and network can originate SMS; `sdk_sms_send()`'s contract and timing are confirmed.
+
+The demo run did **not** exercise inbound, which is the untested half. **Decisive next experiment, entirely inside the demo:** option 3 (Configure) → send an SMS to the device → option 9 (Poll + Drain), with option 4 before/after to watch `used` go 0 → 1. If the demo receives it, the modem/service path is fine and the fault is in the port; if it does not, the fault is below our code and no app change will help. Worth checking in parallel that **MT-SMS is provisioned on this SIM** (mcc=404 mnc=10, ICCID 8991102603410187788x — an M2M/data SIM): MO working does not imply MT is enabled, and that alone would explain everything seen so far.
+
+> ⚠️ **Build-target trap (cost two builds here).** `Code/sdk/out/bcfg` persists the last `build.bat -t <target>`. After the demo run it held `target='wm_app_main'`, so the regenerated top-level `CMakeLists.txt` pulled in `wm_src/wm_ui_app` and the ninja graph contained **zero** references to `sms_manager` — a plain `.\build.bat` then rebuilt and staged the *demo* image while reporting success, and edits to the weware sources were silently not compiled (`ninja: no work to do`, even with the object deleted). **Always check `out/bcfg` (or that ninja actually compiled the file you edited) before trusting a build.** Rebuild the app explicitly with `.\build.bat -t weware_main`; switch back to the demo with `.\build.bat -t wm_app_main`.
+
+#### 3.6.6 SMS working end-to-end (2026-09-08) ✅
+
+Inbound SMS received, parsed, routed to the command manager, and the reply delivered back to the sender:
+
+```
+SMS URC (async): index=1
+SMS URC: parsed index: 1
+SMS URC: inline text parsed - sender=+919952929341, content_len=17
+```
+
+…followed by the command reply arriving as an SMS on the sending handset. So the whole ported chain is live: `+CMTI` → kernel `wm_sms_task` read → `SDK_SMS_EVT_INCOMING` → parked in `SMS_URC_Q` → drained by the SMS task → `sms_extract_fields` (`+919952929341`, 17-char body) → `command_manager_accept_request()` → `utils_route_response_to_module(MODULE_ID_SMS, …)` → `SMS_SEND_Q` → `sdk_sms_send()`. The inline-`+CMGR` fast path in `sms_process_urc` is what ran (no `sms_read_message()` re-read), exactly as designed.
+
+**Which change fixed it — and a correction to §3.6.5.** The only functional change to the inbound path between the failing and passing runs was the `wm_sms_set_preferred_storage("SM","SM","SM")` pin, so that is the likely fix, and the mechanism theorised in §3.6.4 was probably right after all. §3.6.5 retracted it too readily: **`AT+CPMS?` reports only the active read/delete store (mem1) — it does not report mem3, the *receive* store.** So the demo's `storage SM: 0/10 used` never ruled out a mem3 mismatch; with mem3 defaulting elsewhere, `+CMTI` would name a store that the subsequent bare `AT+CMGR=<idx>` (against mem1=SM) could not read, and `wm_sms_task` drops such a message without ever calling the incoming callback. Pinning all three memories removes that mismatch. Not proven in isolation — other things (service/registration timing) also differed between runs — so the CPMS call stays **non-essential** (it must not gate the retry ladder) but is definitely kept.
+
+**Also added:** `sms_send_internal()` now logs successful sends (`SMS sent to %s (%u chars, %u ms)`) as well as failures with the elapsed time. The reference logged nothing on success, which left the outbound half of a command round-trip invisible — the kernel's own AT trace goes to the CP console, not the app's.
+
+#### 3.6.7 Two defects from the SMS command soak (2026-09-08)
+
+24 inbound commands exercised (`SMS_test.log` + `z_logs/`). Two faults:
+
+**(a) Stale AT-command text prefixed to a reply — kernel defect in `wm_sms_send_text`.** `MOD: get-ota-status` (no password) came back as:
+
+```
+AT+CPIN?
+AT+QCELLEX=1
+ERROR: Authentication required for 'GET-OTA-STATUS'
+```
+
+The reply text itself is correct; the two AT lines are prepended. They cannot come from our code — `cmd_state_handle_check_auth` writes the error with `snprintf(response_buffer, …)` at offset 0, `utils_route_response_to_module` copies into a zeroed local `ModuleMessage`, and no app source contains an `"AT+…"` literal (both strings live in `lib_wmsrc.a`: `AT+CPIN?` from the SIM status poll, `AT+QCELLEX=1` from the cell-info query the GPS packet builder uses).
+
+The mechanism is in the kernel. Disassembly of `wm_sms_send_text` shows the CMGS sequence split across **two separate `atCmdSendWaitResp()` calls** — first `AT+CMGS="<number>"`, then the body + Ctrl-Z — with only its **own** SMS mutex held (`osiMutexTryLock` on the SMS lock, taken before both). Between those two calls the modem sits in **prompt (`>`) mode, where every byte on the AT channel becomes message body**. Our other tasks are issuing ATs continuously — the SIM detect task polls at 1 Hz (`SIM modem status=…` every second in the log) and each GPS packet triggers the radio-info query — so any AT command landing in that window is swallowed into the outgoing SMS. That matches the observed junk exactly: real AT command strings, in the prefix position, from precisely those two subsystems, and intermittent (most replies were clean because the collision must hit the prompt window). The blocking `sdk_sms_send` measured ~1.1 s in the vendor demo, so the window is wide.
+
+There is **no app-side fix**: the SMS lock does not serialise other subsystems' AT traffic, and `atCmdSendWaitResp` exposes no "hold the AT channel" flag. **This needs a vendor fix** — the CMGS prompt sequence must be atomic against all other AT users. Possible interim mitigations if it proves disruptive: gate the SIM 1 Hz poll (and the GPS radio-info query) on an "SMS send in progress" flag, which shrinks but cannot close the window.
+
+**(b) Duplicate reply — both SMS queues were unlocked across tasks (fixed).** `Mod:get-network-config` produced two identical `apn:wheelseye.com,user:,pass:,cid:1,auto:TRUE` replies from a **single** inbound message (one `SMS URC (async)` in the log, so the duplication is downstream of receive). Root cause: `queue_manager_create()` only creates a mutex when `QueueConfig.thread_safe` is set — otherwise `q->mutex` stays NULL and `queue_push`/`queue_pop` run **completely unlocked** — and both SMS-path queues were CG-verbatim `thread_safe = FALSE` while crossing task boundaries:
+
+| Queue | Producer | Consumer |
+|---|---|---|
+| `CMD_REQUEST_Q` | SMS task (`command_manager_accept_request`) **and** TCP task (recv path) | command task |
+| `SMS_SEND_Q` | command task (`utils_route_response_to_module`) | SMS task |
+
+An unsynchronised ring buffer with producer and consumer on different tasks can lose a head/tail update and hand the same element out twice. Both are now `thread_safe = TRUE`. This is a **latent CG bug carried over verbatim, not a port artifact** — the reference has the same cross-task producers with the same flag; it deviates from CG deliberately and the registry entries say why. Note `TCP_SEND_Q` was already `TRUE`, which is why the TCP path never showed this.
+
+**Diagnostics added** so the next soak is conclusive: `sms_forward_inbound()` logs the inbound command text (`SMS cmd from %s [%u]: '…'`) instead of only `content_len`, and `sms_send_internal()` logs the exact body handed to the kernel (`SMS send -> %s [%u]: '…'`). If the AT junk appears in that send line, corruption is upstream of the kernel; if the line is clean and the delivered SMS is not, (a) is confirmed as the sole cause.
+
+#### 3.6.8 CG ordering check: SMS config is gated on SIM presence, never on the network (2026-09-09)
+
+Verified against the reference. **CG's SMS module has zero coupling to the network** — no `EVENT_NETWORK_*` registration and no network call anywhere in `module/sms/sms_manager.{c,h}`. `sms_configure()` is gated solely on SIM presence (`g_sms_sim_inserted`, set from `EVENT_SIM_AVAILABLE` / `sim_manager_get_sim_status()`), so SMS is configured **as soon as the SIM is present — before, and independently of, the network connection**. Module init order is identical to ours (SMS after NETWORK in `g_modules[]`), but that is init order, not configure order. Our port already matched this in code shape, so no ordering change was needed.
+
+**The real divergence is the SIM signal itself, and it is what has been disrupting SMS configuration.** The reference reads SIM presence from a **hardware SIM-detect GPIO** (`SDK_GPIO_SIM_DETECT_PIN` 117, a tray switch), which `AT+CFUN=0` cannot affect — CG's "SIM present" is stable from boot, so `s_sms_modem_config_applied` latches once and `sms_configure()` never runs again. Walnut's `sim.c` has that GPIO path but compile-gated off (`SIM_DETECT_VIA_GPIO 0`); the active path asks the **modem** (`sdk_sim_get_status`), which reports `SDK_SIM_ABSENT` whenever the radio is down. `RESTART_CFUN` holds the radio off for `NETWORK_CFUN_OFF_SETTLE_MS` + `NETWORK_CFUN_ON_SETTLE_MS` = 5 s, while the detect task polls at 1 s needing 3 matches — so **every radio restart faked a SIM removal**, exactly as seen on target:
+
+```
+[INFO] NET CFUN=0
+[INFO] SIM modem status=1        <- ABSENT, radio is off
+[INFO] SIM modem status=1
+Configuring SMS settings (attempt 2)
+```
+
+Consequences: `EVENT_SIM_UNAVAILABLE` to every listener (the network module gets a spurious SIM-removed mid-restart), and for SMS a cleared config latch followed by a full reconfigure — `delete_all` included, wiping the store — issued precisely while the radio is down, which is when those storage/service AT commands fail. That is the source of the `-1` retry ladder chased in §3.6.1/§3.6.2.
+
+**Fix (follows the reference's behaviour without needing the detect GPIO):** the SIM detect task now skips sampling while `weware_network_get_state() == NETWORK_STATE_RESTART_CFUN` (both already public; no extra AT traffic, unlike polling `sdk_network_get_cfun()`). SIM presence therefore stays stable across radio restarts, the SMS latch holds after the first successful configure, and the spurious SIM-removed events stop. This also closes the "related interaction" flagged in §3.6.3.
+
+#### 3.6.9 CMGS-prompt corruption CONFIRMED (2026-09-09, `z_logs/sms_spam_test.log` 1422-1489)
+
+Reproducible by sending SMS commands back to back. The new `tx2`/`tx3`/`tx4` tracing proves the corruption is **not** in anything the app produces — it happens inside the kernel's `AT+CMGS` prompt window, exactly as theorised in §3.6.7(a).
+
+Two consecutive replies, log vs. what the handset received:
+
+| # | `SMS>tx2` body we hand to the kernel | window (`tx3`→`tx4`) | app log lines inside the window | delivered SMS |
+|---|---|---|---|---|
+| 1 | `'ERROR: Authentication required for 'GET-OTA-STATUS''` (51 ch, clean) | **4135 ms** | `SIM modem status=2`, ADC, `WEWARE STATUS`, **`[WARN] gsm utc: rtc_get_utc_time failed`**, TCP send/ACK | **`AT+CCLK?`** + the correct reply |
+| 2 | `'is:0,wo:5.0,wf:4.9,…,sc:0'` (101 ch, clean) | **1920 ms** | `[nmea]`, ADC | **`AT+CSQ`** + the correct reply |
+
+The match is exact: reply 1 was corrupted with `AT+CCLK?` and the log shows the clock read (`gsm utc: rtc_get_utc_time`) firing inside that window; reply 2 was corrupted with `AT+CSQ`, the signal-quality query the GPS/radio path issues. Both `tx2` bodies are byte-clean, and `sdk_sms_send()` returned **rc=0** in both cases — the modem considers a corrupted send successful, so there is no error for the app to detect.
+
+Confirmed offenders so far — all app-initiated through `sdk_*` wrappers: `AT+CCLK?` (time), `AT+CSQ` (signal), `AT+CPIN?` / SIM status poll at 1 Hz, `AT+QCELLEX=1` (cell info, per GPS packet). Send windows measured 1.9-4.1 s, so with any periodic AT traffic a collision is near-certain under load — hence "reproducible if you spam fast enough".
+
+**No kernel-level lock is available:** `atCmdSendWaitResp` is the only AT symbol exported by `core_stub.o` / the libs (no `atLock`, `at_mutex` or equivalent), and `wm_sms_send_text` guards the sequence only with its own SMS mutex, which other subsystems never take. The proper fix is in the vendor kernel — the CMGS prompt sequence must be atomic against all AT users. **Report to Walnut.**
+
+An app-side mitigation was considered — a global "AT gate" mutex held by the SMS task across `sdk_sms_send()` and taken by the periodic AT users (SIM poll, time read, radio/cell queries, network health check), since every observed offender is ours. **Decision 2026-09-09: not implemented — vendor fix only.** It would only mask a kernel defect, could not cover AT traffic the kernel originates internally, and would spread SMS-specific coupling across the SIM, GPS, time and network modules. The `SMS>tx2/tx3/tx4` tracing stays in place as the reproduction and evidence path.
+
+##### Vendor report (Walnut) — one-line statement of the defect
+
+`wm_sms_send_text()` (lib_wmsrc.a) splits the CMGS exchange into two separate `atCmdSendWaitResp()` calls — `AT+CMGS="<number>"`, then the body + Ctrl-Z — and guards them only with its own SMS mutex. Between the two calls the modem sits in `>` prompt mode, where **every byte arriving on the AT channel is taken as message body**, so any AT command issued by another task in that window (measured 1.9-4.1 s) is transmitted as part of the SMS. Reproduced with `AT+CCLK?` and `AT+CSQ`; `AT+CPIN?` and `AT+QCELLEX=1` seen earlier. `sdk_sms_send()` still returns 0, so the corruption is undetectable by the caller. **Required fix:** hold the AT channel lock across the whole CMGS prompt sequence (or expose a lock so callers can), and/or return an error when the prompt exchange is disturbed.
+
+**Unrelated observation — the device reset at the end of boot 1**, between `NET URC 1 in RESTART_CFUN` and the `[ERROR] NET URC PDP deactivated -> DISCONNECTED` line that boot 2 prints at the same point. SMS had already finished (`SMS modem configured`) and its task was idle, and boot 2 ran the identical SMS code through the same point without incident, so this sits in the **network URC path, not SMS**. Boot 2's banner shows no `Reboot: SOFT/<module>` line, i.e. no pre-boot record was written — an unplanned reset rather than the app's own soft-reset path. Needs its own investigation; not tracked here.
 
 ---
 
@@ -240,7 +402,7 @@ Files: `module/uart/uart_manager.{h,c}` (CG logic verbatim), the new walnut driv
 
 1. ~~TCP store-and-forward~~ ✅ 2026-08-21 — TCP_SEND_Q live: batch send / ACK-commit / live-first / reboot persistence; GPS backlog absorbed; command/BLE response path has a landing queue.
 2. **Board constants** — GW1NS ADC channels (`ADC_CHANNEL_IGNITION/EXTERNAL`, default 1/2), divider gain (default 131), GPIO pins: netlight **assigned 2026-09-08** (69 = blue LED, active high; 70 = red is free), status/power-select still default disabled. Ignition/voltage readings are untrusted until confirmed.
-3. **Event broadcasts from modules** — TCP done 2026-08-21; SIM done 2026-08-21 (`EVENT_SIM_AVAILABLE/UNAVAILABLE` + connected tracking); network overall-timeout → `EVENT_RESET_SOFT` done 2026-08-21. Still open: GPS connected-disconnected events and the GPS parse-fail `sdk_system_reboot()` → `EVENT_RESET_SOFT` switch.
+3. **Event broadcasts from modules** — TCP done 2026-08-21; SIM done 2026-08-21 (`EVENT_SIM_AVAILABLE/UNAVAILABLE` + connected tracking); network overall-timeout → `EVENT_RESET_SOFT` done 2026-08-21. Still open: GPS connected-disconnected events and the GPS parse-fail `sdk_system_reboot()` → `EVENT_RESET_SOFT` switch — **raised in priority 2026-09-09:** with the GNSS module unpowered this fires ~60 s after every boot (60 fails × 1000 ms loop) and will abort any longer OTA download, so the switch should also gate on `sdk_gps_get_power_status` rather than rebooting on a receiver that is simply off.
 4. **Config persistence wiring** — network done 2026-08-21 (`weware_network_set_apn`/`network_config_set` persist; NetworkConfig stored, blob v5). Still open: `gps_config_set` / `weware_tcp_config_set` should call `config_get_current() + config_save_to_file(NULL)` (system_config and network already do).
 5. **Packet placeholder bytes** — input-wire mV, external mV, battery % (all already computed in `g_power_info`), digout, accel orientation.
 6. ~~SENDING_DATA liveness~~ ✅ 2026-08-21 — 100 s keepalive restored (CG table row incl. `reset_overall=FALSE`).
@@ -255,11 +417,30 @@ Files: `module/uart/uart_manager.{h,c}` (CG logic verbatim), the new walnut driv
 ## 6. Validation status
 
 - ✅ Compiles and links (GW1NS-4, XIP, 4 MB flash). ⚠️ Image **not** signed/staged for the 2026-09-07 UART change — see the Build line at the top.
-- ⬜ **Storage dirs (2026-08-26 fix, verify first):** boot log must show no `[FLASHP] E: ensure_dir` lines and no `[FILESYS] E: write_file: open failed path='C:/preboot/...'`; `[PREBOOT] E: tcpq_clr` spam gone; after a soft reset the `WEWARE STATUS` line reports `Reboot: SOFT/<module> #n` (preboot record round-trips); `C:/config/system_config.dat` and `C:/queue/*.dat` get created. First boot on an already-flashed unit was observed 2026-08-26 with dirs missing → this fix.
+- ✅ **Storage dirs + reboot persistence — behaviorally validated 2026-09-08** (2026-08-26 trailing-slash fix). Test: SIM removed → offline GPS packets accumulated in TCP_SEND_Q (file persistence under `C:/queue/`) → device soft-reset via the network overall-timeout `EVENT_RESET_SOFT` (preboot record written) → SIM re-inserted on next boot → server received, in order: ① login packet, ② the offline backlog in ascending packet-count order, ③ live packets. Proves the flash dirs are created, the queue snapshot + preboot record survive the reset, and the resume path replays without loss or reordering.
 - ⬜ On-target boot: verify module init pass, `WEWARE STATUS` line, `[ADC]` readings plausibility, config file creation on first boot, watchdog doesn't false-trigger (all five tasks feed uptime; loops iterate ≤1 s).
 - ⬜ Regression: GPS trigger cadence, TCP login/ACK against stage server, network reconnect ladder, reboot persistence (preboot record + GPS last-valid).
-- ⬜ TCP store-and-forward (new 2026-08-21): backlog accumulates while TCP down and drains in ≤5-row batches on reconnect; rows survive a soft reboot (TCP_SEND_Q snapshot); 100 s idle keepalive cycles the connection without wedging; login+GPS frame accepted by stage server (79 B).
-- ⬜ GPS NMEA source (new 2026-08-21, **highest on-target risk — the kernel NMEA callback replaces the validated navdata poll as the sole source**): verify `[nmea]` parse lines appear at 1 Hz, HDOP byte non-zero in packets, no parse-fail streak (a silent callback now escalates to reboot after 60 s), talker prefix is $GN or $GP. Revert switch: rebuild with `-DGPS_QUERY_NAVDATA_POLL`.
+- ✅ **TCP store-and-forward — behaviorally validated 2026-09-08** (SIM-removal test above): backlog accumulated while TCP down, survived the network-timeout soft reboot (TCP_SEND_Q snapshot + resume offset), and drained on reconnect in CG order — login first, then offline rows ascending by packet count, then live packets; login frame accepted by the server. Still unobserved: the 100 s idle keepalive cycling the connection without wedging (needs an idle-queue soak).
+- ⬜ GPS NMEA source (new 2026-08-21, **highest on-target risk — the kernel NMEA callback replaces the validated navdata poll as the sole source**): verify `[nmea]` parse lines appear at 1 Hz, HDOP byte non-zero in packets, no parse-fail streak (a silent callback now escalates to reboot after 60 s), talker prefix is $GN or $GP. Revert switch: rebuild with `-DGPS_QUERY_NAVDATA_POLL`. **Still ⬜ after the 2026-09-09 run: that run had the GNSS module unpowered** (see §3.1 for the SDK-chain audit that came out of it), so the 1 Hz `GPS query and parse failed` stream was the expected empty-queue path, not evidence about the callback. Re-run with the module switched on. ⚠️ **A GPS-off run is not neutral:** `GPS_PARSE_FAIL_SOFT_RESET_COUNT` = 60 against the 1000 ms loop reboots the device ~60 s after every boot (`gps_ops.c:1058-1067`), which will abort any OTA download longer than that — raise the count or gate the reset on `sdk_gps_get_power_status` if GPS-off soaks are needed (see §4 item 3).
 - ⬜ **UART / STM — currently DISABLED, nothing to test until re-enabled.** ① **Which physical port is the STM on?** The one open unknown, now narrowed to two candidates: `DRV_UART_PORT_3` (idx 2, `0xd401f000`, the default and recommended) or `DRV_UART_PORT_2` (idx 1, `0xd4018000`, the AT channel — try only if idx 2 gives no STM reply, and watch that network attach still works). Never idx 0 (driver rejects) or idx 3 (resets — now blocked by a `_Static_assert`). Re-enable per the 3 steps in `module_config.c`; success looks like `[WUART] port=2 open @115200 8-1-0 flow=0`, and a wrong-but-valid port just yields `STM: FAIL (no response)`. ② Confirm `[UART] I: UART manager ready` with **no** `STM binary protocol self-test FAILED` (a CRC/frame mismatch would silently corrupt every frame). ③ Confirm 115200-8-N-1-no-flow matches the STM — a wrong baud fails silently as CRC-bad frames, so watch for a `0xAA` resync / `STM_FRAME_BAD` pattern rather than an error. ④ Send `STM:get-device-info` by SMS → expect `Ok,<fw>,<hw>,<MAC>,…`; then `PING-STM` → expect `STM: OK`, not `STM: FAIL (no response)` after 3 × 5 s (that verdict now means "wrong port or STM silent", no longer "config failed"). ⑤ Watch for `ERR_UART_RX_OVERFLOW` / `ERR_UART_RSP_TIMEOUT` spam and `drop stale STM frame` warnings (opcode correlation working). ⑥ Verify the driver's RX service context does not corrupt the `thread_safe = FALSE` request queue under back-to-back frames. ⑦ Verify an unmapped command falls through to hex passthrough rather than `ERROR: STM command not supported`. ⑧ Confirm opening the chosen port did not disturb the log console or the modem AT channel (no lost logs, network still attaches).
-- ⬜ **SMS (new 2026-09-07):** after SIM insert the boot log shows `[SMS] I: SMS modem configured` once (not every cycle — `s_sms_modem_config_applied` latch); send a command SMS to the device number and confirm `[SMS] D: SMS URC (async): index=…`, a non-`UNKNOWN` sender in the forwarded request, the command reply arriving back as an SMS at the sender's number, and the message being deleted from the store (no index reuse / store-full after several messages); verify `sdk_sms_send`'s blocking call does not trip the task-stall watchdog (60 s) on a slow network; verify SIM removal clears the latch and re-configuration happens on re-insert.
-- ⬜ Network/SIM parity pass (new 2026-08-21): first boot recreates the config file at blob v5; 4-way health check runs at 65 s cadence while CONNECTED (watch for false disconnects — GET_IP inside the check must pass on this kernel); SIM insert broadcasts EVENT_SIM_AVAILABLE → network RESTART_CFUN; overall-timeout path performs a persisted soft reset (preboot record written) instead of a bare reset; APN set via `weware_network_set_apn` survives reboot.
+- ✅ **SMS modem configuration (2026-09-08, see §3.6.2):** `SMS modem configured` printed once per insert (latch holds, no per-cycle repeat); `AT+CMGF`, `AT+CNMI` (+CMTI mode) and `AT+CSCS` all applied; store cleared. Verified over two boots, cold and warm SIM.
+- ✅ **SMS end-to-end (2026-09-08, §3.6.6):** command SMS in → `SMS URC (async): index=1`, sender parsed as `+919952929341` (non-`UNKNOWN`), forwarded to the command manager, reply delivered back as an SMS to the sender. Outbound also confirmed independently in the vendor demo (§3.6.5).
+- ⬜ **SMS soak / edge cases (still pending):** several messages back-to-back — the store is only **10 slots**, so watch for index reuse or a full store (the kernel auto-deletes after dispatch, and our redundant `AT+CMGD` is expected to warn `may already be gone`); `sdk_sms_send`'s **blocking** call against the 60 s task-stall watchdog on a slow/failing network; SIM removal → re-insert re-runs configuration; the retry spacing (2 s × 10) on a cold SIM (expect a couple of `retrying (n/10)` lines ~2 s apart); a >160-char inbound body and a body containing `\r\n` through `sms_extract_fields`.
+- ⬜ Network/SIM parity pass (new 2026-08-21): first boot recreates the config file at blob v5; 4-way health check runs at 65 s cadence while CONNECTED (watch for false disconnects — GET_IP inside the check must pass on this kernel); SIM insert broadcasts EVENT_SIM_AVAILABLE → network RESTART_CFUN; APN set via `weware_network_set_apn` survives reboot. ✅ Partially validated 2026-09-08: overall-timeout path performs a **persisted** soft reset (preboot record + TCP_SEND_Q written before reboot) instead of a bare reset, and SIM re-insert brought the ladder back to CONNECTED — proven by the SIM-removal store-and-forward test.
+
+
+## Supported external flash:
+The Below listed External flash modules are supported by the File system APIs of walnut vis SPI, No direct SPI api calls are needed.
+
+["GD25LQ64C", "GD25LF64E", "W25Q64JW", "FM25M64C", "XM25QU64B", "XM25QU64C", "P25Q64LE", "ZG25LQ64A", "ZB25LQ64A", "EN25S64A", "BY25FQ64EL", "MX25U6432F", "XT25Q64F", "PY25Q64LB"]
+
+1. In file: `Tools\aboot\config\flash\QSPI_NOR_8MB_B64KB_S4KB_P256.json`
+```
+"GD25LQ64C", "W25Q64JW", "FM25M64C", "XM25QU64B", "XM25QU64C", 
+"P25Q64LE", "ZB25LQ64A"
+```
+
+2. In file: `Tools\aboot\config\flash\SPI_NOR_8MB_B64KB_S4KB_P256.json`
+```
+"GD25LF64E", "ZG25LQ64A", "EN25S64A", "BY25FQ64EL", "MX25U6432F", "XT25Q64F", "PY25Q64LB"
+```

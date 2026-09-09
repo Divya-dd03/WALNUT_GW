@@ -502,8 +502,19 @@ static int fmt_ist_datetime(UINT32 epoch, char *out, int size)
     unsigned d   = doy - (153u*mp + 2u)/5u + 1u;
     unsigned mo  = (mp < 10u) ? mp + 3u : mp - 9u;
     if (mo <= 2u) y += 1;
-    return snprintf(out, size, "%02u-%02u-%04d %02u:%02u:%02u",
-                    d, mo, y,
+    /* WALNUT: the day/month/year arguments are reduced modulo their field widths
+     * before printing. The civil-from-days math above already guarantees
+     * d <= 31, mo <= 12 and (for a UINT32 epoch) y <= 2106, so for every
+     * reachable input this is the identity and the output is always exactly 19
+     * chars + NUL. It is written this way because GCC's range analysis cannot
+     * follow the calendar arithmetic: it assumes up to 10 digits per %02u and
+     * 11 per %04d, computes a 38-byte worst case against the caller's dt[24],
+     * and emits -Wformat-truncation. Reducing the three unprovable fields makes
+     * the 20-byte bound provable, and also makes truncation impossible even if
+     * a future caller passes a nonsense epoch. The h/m/s fields need no help -
+     * the compiler already derives [0,59] from the modulo arithmetic. */
+    return snprintf(out, size, "%02u-%02u-%04u %02u:%02u:%02u",
+                    d % 100u, mo % 100u, (unsigned)y % 10000u,
                     (unsigned)(tod / 3600u), (unsigned)((tod % 3600u) / 60u),
                     (unsigned)(tod % 60u));
 }
