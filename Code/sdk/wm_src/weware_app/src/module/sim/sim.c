@@ -277,7 +277,7 @@ SdkResult weware_sim_check_sim_ready(bool *api_error_out)
     if (api_error_out) *api_error_out = false;
 
     UINT8     cpin   = 0;
-    SdkResult result = sdk_sim_get_pin_status(&cpin);
+    SdkResult result = sdk_sim_get_pin_status(&cpin); // sim detect pin status
 
     if (result == SDK_RESULT_NOT_SUPPORTED)
         return SDK_RESULT_NOT_SUPPORTED;

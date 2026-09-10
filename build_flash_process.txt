@@ -1,0 +1,151 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ALL:
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+$folder = "D:/WheelsEye/Gateway/gateway_repos/v5-ZX/WALNUT_GW" # "D:/WheelsEye/Gateway/_resources/walnut_zx/walnut_zx_sdk/WEGW_1605_4_RL"
+$output = "D:/WheelsEye/Gateway/gateway_repos/v5-ZX/WALNUT_GW/folder_structure.txt"
+
+function Print-Tree {
+    param (
+        [string]$Path,
+        [string]$Prefix = ""
+    )
+
+    $items = Get-ChildItem -Path $Path | Sort-Object @{Expression={$_.PSIsContainer}; Descending=$true}, Name
+
+    foreach ($item in $items) {
+        Add-Content -Path $output -Value "$Prefix|_ $($item.Name)"
+
+        if ($item.PSIsContainer) {
+            Print-Tree -Path $item.FullName -Prefix "$Prefix|  "
+        }
+    }
+}
+
+Set-Content -Path $output -Value (Split-Path $folder -Leaf)
+
+Print-Tree -Path $folder
+
+Write-Host "Folder structure written to: $output"
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FOLDER ONLY:
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+$folder = "D:/WheelsEye/Gateway/gateway_repos/v5-ZX/WALNUT_GW" # "D:/WheelsEye/Gateway/_resources/walnut_zx/walnut_zx_sdk/WEGW_1605_4_RL"
+$output = "D:/WheelsEye/Gateway/gateway_repos/v5-ZX/WALNUT_GW/folder_only_structure.txt"
+
+function Print-Tree {
+    param (
+        [string]$Path,
+        [string]$Prefix = ""
+    )
+
+    $folders = Get-ChildItem -Path $Path -Directory | Sort-Object Name
+
+    foreach ($folder in $folders) {
+        Add-Content -Path $output -Value "$Prefix|_ $($folder.Name)"
+
+        Print-Tree -Path $folder.FullName -Prefix "$Prefix|  "
+    }
+}
+
+# Create/clear output file
+Set-Content -Path $output -Value (Split-Path $folder -Leaf)
+
+# Generate folder tree
+Print-Tree -Path $folder
+
+Write-Host "Folder structure written to: $output"
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+TOPIC-1: BUILD:
+
+1. refer to the following files for how the folder structure is looking in the intergrate read to use SDK.
+file and folders: D:\WheelsEye\Gateway\_resources\walnut_zx\walnut_zx_sdk\WEGW_1605_4_RL\folder_structure.txt
+folders only: D:\WheelsEye\Gateway\_resources\walnut_zx\walnut_zx_sdk\WEGW_1605_4_RL\folder_only_structure.txt
+
+2. The SDK comes in 2 parts:
+- SDK apis and other available on GIT.
+- Tool chains and others shared as a zip file (WEGW_1605_4_RL_Toolchain.zip).
+- steps to setup the SDK for use:
+    - Refer the GIT repository shared by walnut team and clone it locally.
+    - Receive the tool chains and missing huge libraries plus miscellaneous files in the ZIP file shared by walnut in a drive link.
+    - unzip the zip file for example: "D:\WheelsEye\Gateway\_resources\walnut_zx\walnut_zx_zips\WEGW_1605_4_RL_Toolchain.zip"
+    - inside the zip file there are 2 subfolders.
+        - 1. DEV_TOOLS -> catstudio for usb logs, serial port tool for at exchange.
+        - 2. WEGW_1605_4_RL -> this folder contains the missing part of SDK we need to copy to the repo.
+                it will have 2 subfolders "Code", "Tools". code contains the prebuilts required for windows system,
+                and tools contain the aboot tool for packaging and flashing.
+                These folders should be copied to the repository.
+    - Once coped the build process can be done by hitting the following commands in .bat files.
+- Inside the folder in the GIT repo WEGW_1605_4_RL/Code/sdk we have the following .bat files for build flash and clean.
+    - wm_c8.bat -> clean
+    - wm_b8.bat -> build
+    - wm_f8.bat -> flash
+    - these are the files we will use.
+    - a Little more context about build setup which is by default given for the demo UI application provided by walnut. This context is important
+        later for us to understand how we should build our own customer application.
+        - A look on how demo app is integrated in the SDK
+         - 1. app is integrate in folder Code/sdk/wm_src/<app=wm_ui_app>
+         - 2. Code\sdk\wm_src\CMakeLists.txt -> target_sources (.c) from wm_ui_app
+         - 3. The cmake file in the directory above at Code\sdk\CMakeLists.txt is gitignored as it is auto-generated.
+         - 4. The changes in file Code\sdk\CMakeLists.txt.in is reflected in the ignored Code\sdk\CMakeLists.txt file.
+                - Add the app relative path in include_directories() section as "wm_src/wm_ui_app"
+                - Make sure the "add_appimg(${target} ${flash_ldscript}  wm_app_main.c)" has main app .c file mentioned
+                - In the file Code\sdk\wm_config.h.in make sure the following is properly configured:
+                    - WM_CURRENT_SLEEP_MODE -> WM_SLEEP_MODE_OFF
+                    - WM_CURRENT_BOARD -> WM_EVAL_GPS_V1
+                    - WM_CURRENT_DEBUG_MODE -> WM_DEBUG_DEV_MODE (for log mode)
+                    - WM_CURRENT_LOG_LEVEL -> WM_LOG_LEVEL_INFO (for log level)
+                - optionally the macro WM_PROD_APP -> customer app, WM_UI_APP -> demo app (wm_ui_app) (note this for later)
+        - 5. In the build.bat file check this part of code which references the app:
+                set para_ab_example_suffix=
+                if exist .\%para_ab_example_name%.c (
+                    set para_ab_example_suffix=c
+                ) else if exist .\%para_ab_example_name%.cpp (
+                    set para_ab_example_suffix=cpp
+                )
+                // Note this part for later as this context is needed in integrating customer app.
+        - 6. In the file wm_b8.bat edit the following comment for apps:
+                build.bat -bv GW1NS -fs 4 -t <app> // here app is "wm_app_main", 4-> 4MB memory
+    - once the above steps are followed run the "wm_b8.bat" file to build the project.
+- Now steps on how customer app -> weware_app is integrated:
+    - the same steps are followed here as well, well maybe the paths given in each cmake file differs.
+    - extra steps needed are as follows:
+        - 1. In file Code\sdk\wm_src\CMakeLists.txt:
+            "target_sources(${target} PRIVATE" will contain weware_app source file paths, and demo will be commented out
+        - 2. In build.bat 
+            in the previous section asked to be noted add the following:
+                set para_ab_example_name=%para_ab_target%
+                set para_ab_example_suffix=
+                if exist .\%para_ab_example_name%.c (
+                    set para_ab_example_suffix=c
+                ) else if exist .\%para_ab_example_name%.cpp (
+                    set para_ab_example_suffix=cpp
+                ) else if exist .\wm_src\weware_app\%para_ab_example_name%.c (
+                    set para_ab_example_name=wm_src/weware_app/%para_ab_example_name%
+                    set para_ab_example_suffix=c
+                )
+        - 3. in wm_b8.bat:
+            - app name: weware_main
+            so command would be : ".\build.bat -bv GW1NS -fs 4 -t weware_main"
+        - 4. In the cmake files the app_image would be this: "add_appimg(${target} ${flash_ldscript}  wm_src/weware_app/weware_main.c)"
+                And the includes would be like this: "wm_src/weware_app/(<other subdirectories)"
+                And set(WM_BUILD_PURPOSE ${WM_PROD_APP}) will have WM_PROD_APP macro defined in the wm_config.h.in file
+    - now build will proceed for customer application.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+TOPIC-2: FLASH
+
+- Flashing has 2-3 options:
+    - 1. wm_f8.bat for flash All
+    - 2. Burn_ALL.bat for all the partitions of modem, similar to wm_f8.bat
+    - 3. Burn_APP.bat for application only (customer app/demo app)
+    - we use wm_f8.bat normally and always make sure the app is correctly called.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Thats pretty much it.

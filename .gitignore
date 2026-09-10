@@ -24,6 +24,8 @@ Code/kernel/GW1NS-4/customer_app.bin
 *.csv
 *.tsv
 
+!build_flash_process.txt
+
 #misc
 instructions.md
 .progress_meta
