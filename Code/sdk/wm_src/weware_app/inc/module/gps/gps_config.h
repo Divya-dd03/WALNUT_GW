@@ -13,7 +13,7 @@
 
 #include <stddef.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,7 +28,7 @@ extern "C" {
 #define GPS_TASK_LOOP_SLEEP_MS        1000   /**< Main task loop period (ms) */
 #define GPS_NMEA_RATE_DEFAULT         1      /**< NMEA output rate (1 = 1 Hz) */
 
-/** Walnut: sdk_gps_enable_nmea_output() data-get mode. Both modes behave the
+/** Walnut: wm_sdk_gps_enable_nmea_output() data-get mode. Both modes behave the
  *  same on this receiver (the SDK owns the receiver UART and parses NMEA
  *  internally); reference SIMCOM used BY_URC / BY_PORT here. */
 #define GPS_WALNUT_NMEA_DATA_GET_MODE 0u
@@ -44,7 +44,7 @@ extern "C" {
 /** Binary packet encoding (used by gps_packet.c) */
 #define GPS_LAT_LON_FIXED_SCALE       1800000.0  /**< Lat/lon fixed-point scale */
 
-/** GNSS start modes (walnut sdk_gps_start_mode() takes 0/1/2 directly;
+/** GNSS start modes (walnut wm_sdk_gps_start_mode() takes 0/1/2 directly;
  *  reference gets these from sdk_platform). */
 #define SDK_GNSS_START_HOT            0u
 #define SDK_GNSS_START_WARM           1u
@@ -135,22 +135,22 @@ BOOL gps_config_defaults_applied(void);
  *        Keys: i-on, i-off, ang, dist, ang-tr, dist-tr, agps, start, lv-boot,
  *        lv-ign-off, lv-no-fix, time-src, agps-ref, spd-filt. Partial updates
  *        allowed; all provided values validate before any is applied.
- * @return SDK_RESULT_SUCCESS if valid and set, SDK_RESULT_INVALID_PARAM otherwise
+ * @return WM_SDK_RESULT_SUCCESS if valid and set, WM_SDK_RESULT_INVALID_PARAM otherwise
  */
-SdkResult gps_config_set(const char *config_string);
+wm_SdkResult gps_config_set(const char *config_string);
 
 /**
  * @brief Get GPS configuration parameters as comma-separated string
- * @return SDK_RESULT_SUCCESS; SDK_RESULT_INVALID_PARAM on bad args;
- *         SDK_RESULT_ERROR if buffer is too small
+ * @return WM_SDK_RESULT_SUCCESS; WM_SDK_RESULT_INVALID_PARAM on bad args;
+ *         WM_SDK_RESULT_ERROR if buffer is too small
  */
-SdkResult gps_config_get_string(char *buffer, size_t buffer_size);
+wm_SdkResult gps_config_get_string(char *buffer, size_t buffer_size);
 
 /**
  * @brief Validate GPS configuration
- * @return SDK_RESULT_SUCCESS if valid, SDK_RESULT_INVALID_PARAM if invalid
+ * @return WM_SDK_RESULT_SUCCESS if valid, WM_SDK_RESULT_INVALID_PARAM if invalid
  */
-SdkResult gps_config_validate(const GpsConfig *config);
+wm_SdkResult gps_config_validate(const GpsConfig *config);
 
 /**
  * @brief Get GPS module configuration storage pointer

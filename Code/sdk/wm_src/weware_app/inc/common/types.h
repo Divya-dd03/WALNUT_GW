@@ -4,12 +4,12 @@
  *        reference firmware's common/types.h.
  *
  * Walnut adaptations:
- * - BOOL / UINT8..UINT64 / INT64 come from the walnut SDK (sdk_types.h ->
+ * - BOOL / UINT8..UINT64 / INT64 come from the walnut SDK (wm_sdk_types.h ->
  *   typedef.h) instead of the SIMCOM/Quectel compat headers.
  * - TRUE/FALSE mirror sc_def.h (identical token sequence, so a later
  *   include of wm_global.h is a benign redefinition).
  * - sdk_task_ref_t (reference: sdk_platform.h) is the walnut opaque task
- *   handle (sdk_task_create returns void *).
+ *   handle (wm_sdk_task_create returns void *).
  */
 
 #ifndef TYPES_H
@@ -19,7 +19,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifndef TRUE
 #define TRUE true
@@ -33,9 +33,9 @@ typedef void *sdk_task_ref_t;
 
 /**
  * @brief Result type for functions that can fail (reference common/types.h).
- * @note Values shared with SdkResult are numerically identical
+ * @note Values shared with wm_SdkResult are numerically identical
  *       (SUCCESS 0, ERROR -1, TIMEOUT -2, INVALID_PARAM -3, ...), so an
- *       SdkResult-returning module init can be used through a Result-typed
+ *       wm_SdkResult-returning module init can be used through a Result-typed
  *       function pointer (same convention the reference uses for casts).
  */
 typedef enum

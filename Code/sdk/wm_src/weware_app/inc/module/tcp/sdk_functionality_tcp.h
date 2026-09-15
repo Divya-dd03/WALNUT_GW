@@ -8,17 +8,17 @@
  * pulling in socket headers here.
  *
  * WALNUT notes:
- *  - The sdk_tcp_* names below are real functions and deliberately SHADOW
- *    the kernel wrappers in lib_wmsrc_B.a (sdk_tcp.c.obj): because this
- *    module also defines sdk_tcp_connect_host, no symbol of that archive
- *    member is ever undefined, the member is never pulled in and no
- *    duplicate-definition occurs. Consequence: EVERY sdk_tcp_* caller in
- *    the image (including the wm_ui_tcp demo) binds to this abstraction
- *    and receives SDK_NETCONN_EVT_* event codes, not the kernel's
- *    SDK_TCP_EVENT_* codes. Never include wm_src/sdk/inc/sdk_tcp.h in the
- *    same file as this header (conflicting prototypes).
- *  - The callback typedef is SdkTcpEventCallback: sdk_types.h (included
- *    everywhere via the sdk headers) owns the name SdkTcpSocketCallback for
+ *  - The sdk_tcp_* names below are real functions in a namespace SEPARATE
+ *    from the kernel wrappers in lib_wmsrc_B.a (wm_sdk_tcp.c.obj), which
+ *    carry the wm_sdk_tcp_* names. The two sets no longer collide, so the
+ *    archive member simply links in alongside this module whenever something
+ *    references it. Consequence: an sdk_tcp_* caller binds to this
+ *    abstraction and receives SDK_NETCONN_EVT_* event codes, while a
+ *    wm_sdk_tcp_* caller (e.g. the wm_ui_tcp demo) gets the kernel's
+ *    incompatible WM_SDK_TCP_EVENT_* codes - do not mix the two on one
+ *    socket.
+ *  - The callback typedef is SdkTcpEventCallback: wm_sdk_types.h (included
+ *    everywhere via the sdk headers) owns the name wm_SdkTcpSocketCallback for
  *    the kernel's incompatible 4-event variant.
  */
 
@@ -86,7 +86,7 @@ int sdk_tcp_get_errno(void);
  * Resolve @p host (retrying DNS until @p timeout_ms elapses) and start a
  * connect on @p fd. Returns 0 once the attempt is under way (outcome
  * arrives as a CONNECTED or ERROR_* event); < 0 on error.
- * Walnut: this definition is what shadows the kernel's sdk_tcp.c.obj -
+ * Walnut: this definition is what shadows the kernel's wm_sdk_tcp.c.obj -
  * it must stay in the image even if the weware TCP module stops using it.
  */
 int sdk_tcp_connect_host(int fd, const char *host, unsigned short port,

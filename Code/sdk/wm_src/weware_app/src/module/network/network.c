@@ -19,11 +19,11 @@
 
 // sdk
 #include "wm_global.h"
-#include "sdk_os.h"
-#include "sdk_network.h"
-#include "sdk_wm.h"
-#include "sdk_system.h"
-#include "sdk_log.h"
+#include "wm_sdk_os.h"
+#include "wm_sdk_network.h"
+#include "wm_sdk_wm.h"
+#include "wm_sdk_system.h"
+#include "wm_sdk_log.h"
 
 // app
 #include "network/network.h"
@@ -109,7 +109,7 @@ typedef struct {
      * live in g_network_config (reference NetworkConfig, persisted). */
     char                 pdp_type[16];
 
-    /* timing (sdk_get_ticks() ms, wrap-safe via unsigned subtraction) */
+    /* timing (wm_sdk_get_ticks() ms, wrap-safe via unsigned subtraction) */
     UINT32               state_entry_tick;
     UINT32               not_connected_since;   /* overall-timeout anchor */
     UINT32               last_radio_refresh_tick;
@@ -190,7 +190,7 @@ static void network_set_state(NetworkState new_state)
         new_state != NETWORK_STATE_RESTART_CFUN &&
         new_state != NETWORK_STATE_INIT &&
         new_state != NETWORK_STATE_ERROR) {
-        sdk_debug_print("NET state %s blocked (RESTART_CFUN active)\r\n",
+        wm_sdk_debug_print("NET state %s blocked (RESTART_CFUN active)\r\n",
                         weware_network_state_to_string(new_state));
         return;
     }
@@ -217,7 +217,7 @@ static void network_set_state(NetworkState new_state)
  *--------------------------------------------------------------*/
 static void network_refresh_radio_info(bool force)
 {
-    UINT32 now = sdk_get_ticks();
+    UINT32 now = wm_sdk_get_ticks();
 
     if (!force) {
         if (!g_network.connected)
@@ -228,9 +228,9 @@ static void network_refresh_radio_info(bool force)
     }
     g_network.last_radio_refresh_tick = (now == 0U) ? 1U : now;
 
-    SdkNetworkGpsRadioInfo info;
+    wm_SdkNetworkGpsRadioInfo info;
     memset(&info, 0, sizeof(info));
-    if (sdk_network_get_gps_radio_info(&info) != SDK_RESULT_SUCCESS || !info.valid) {
+    if (wm_sdk_network_get_gps_radio_info(&info) != WM_SDK_RESULT_SUCCESS || !info.valid) {
         g_network.radio.valid = false;
         return;
     }
@@ -261,9 +261,9 @@ static void network_apply_stable_from_radio(void)
      * no-signal/unknown (CSQ 0) from weak-but-present. */
     if (g_network.radio.valid && !g_network.stable_network) {
         if (g_network.radio.signal_strength == 0)
-            sdk_log_error("NET no signal (csq=0, min=%u)", WEWARE_NETWORK_MIN_CSQ);
+            wm_sdk_log_error("NET no signal (csq=0, min=%u)", WEWARE_NETWORK_MIN_CSQ);
         else
-            sdk_log_error("NET low signal (csq=%d, min=%u)",
+            wm_sdk_log_error("NET low signal (csq=%d, min=%u)",
                           g_network.radio.signal_strength, WEWARE_NETWORK_MIN_CSQ);
     }
 #endif
@@ -277,24 +277,24 @@ static void network_set_connected(bool connected)
     if (connected == g_network.connected)
         return;
 
-    sdk_log_info("NET connection %s", connected ? "UP" : "DOWN");
+    wm_sdk_log_info("NET connection %s", connected ? "UP" : "DOWN");
     g_network.connected = connected;
 
     if (connected) {
         network_refresh_radio_info(true);
         network_apply_stable_from_radio();
         if (g_network.radio.valid)
-            sdk_log_info("NET status: csq=%d mcc=%d mnc=%d lac=0x%04X cell=0x%08X stable=%d",
+            wm_sdk_log_info("NET status: csq=%d mcc=%d mnc=%d lac=0x%04X cell=0x%08X stable=%d",
                          g_network.radio.signal_strength,
                          g_network.radio.mcc, g_network.radio.mnc,
                          (unsigned)g_network.radio.lac,
                          (unsigned)g_network.radio.cell_id,
                          g_network.stable_network ? 1 : 0);
         else
-            sdk_log_warning("NET status: radio info unavailable");
+            wm_sdk_log_warning("NET status: radio info unavailable");
     } else {
         g_network.stable_network = false;
-        g_network.not_connected_since = sdk_get_ticks();
+        g_network.not_connected_since = wm_sdk_get_ticks();
     }
 
     if (g_network_status_cb)
@@ -313,11 +313,11 @@ static Result network_state_handle_check_sim(void)
 static Result network_state_handle_sim_insert(void)
 {
     /* SIM present: wait for CPIN readiness before touching the network */
-    SdkResult result = weware_sim_check_sim_ready(NULL);
+    wm_SdkResult result = weware_sim_check_sim_ready(NULL);
 
-    if (result == SDK_RESULT_SUCCESS)
+    if (result == WM_SDK_RESULT_SUCCESS)
         return RESULT_SUCCESS;
-    if (result == SDK_RESULT_NOT_SUPPORTED)
+    if (result == WM_SDK_RESULT_NOT_SUPPORTED)
         return RESULT_SUCCESS;   /* cannot verify - assume ready */
 
     /* PIN pending or modem not answering: keep polling until the state
@@ -334,11 +334,11 @@ static Result network_state_handle_sim_remove(void)
 static Result network_state_handle_check_ctzu(void)
 {
     UINT32 ctzu = 0;
-    SdkResult result = sdk_network_get_ctzu(&ctzu);
+    wm_SdkResult result = wm_sdk_network_get_ctzu(&ctzu);
 
-    if (result == SDK_RESULT_NOT_SUPPORTED)
+    if (result == WM_SDK_RESULT_NOT_SUPPORTED)
         return RESULT_SUCCESS;   /* skip the CTZU stage entirely */
-    if (result != SDK_RESULT_SUCCESS)
+    if (result != WM_SDK_RESULT_SUCCESS)
         return RESULT_BUSY;      /* modem busy - retry */
 
     /* Mismatch => busy path routes to SET_CTZU */
@@ -347,23 +347,23 @@ static Result network_state_handle_check_ctzu(void)
 
 static Result network_state_handle_set_ctzu(void)
 {
-    if (sdk_network_set_ctzu(WEWARE_NETWORK_CTZU_VALUE) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_network_set_ctzu(WEWARE_NETWORK_CTZU_VALUE) != WM_SDK_RESULT_SUCCESS)
         return RESULT_BUSY;
 
-    sdk_log_info("NET CTZU=%u set, restarting CFUN to apply", WEWARE_NETWORK_CTZU_VALUE);
+    wm_sdk_log_info("NET CTZU=%u set, restarting CFUN to apply", WEWARE_NETWORK_CTZU_VALUE);
     return RESULT_SUCCESS;       /* success path routes to RESTART_CFUN */
 }
 
-static Result network_reg_status_to_result(SdkResult api_result, SdkNetRegStatus status)
+static Result network_reg_status_to_result(wm_SdkResult api_result, wm_SdkNetRegStatus status)
 {
-    if (api_result != SDK_RESULT_SUCCESS)
+    if (api_result != WM_SDK_RESULT_SUCCESS)
         return RESULT_BUSY;
 
     switch (status) {
-        case SDK_NET_REG_HOME:
-        case SDK_NET_REG_ROAMING:
+        case WM_SDK_NET_REG_HOME:
+        case WM_SDK_NET_REG_ROAMING:
             return RESULT_SUCCESS;
-        case SDK_NET_REG_DENIED:
+        case WM_SDK_NET_REG_DENIED:
             return RESULT_ERROR;
         default:                    /* not registered / searching / unknown */
             return RESULT_BUSY;
@@ -372,53 +372,53 @@ static Result network_reg_status_to_result(SdkResult api_result, SdkNetRegStatus
 
 static Result network_state_handle_check_registration(void)
 {
-    SdkNetRegStatus status = SDK_NET_REG_NOT_REGISTERED;
-    return network_reg_status_to_result(sdk_network_get_creg(&status), status);
+    wm_SdkNetRegStatus status = WM_SDK_NET_REG_NOT_REGISTERED;
+    return network_reg_status_to_result(wm_sdk_network_get_creg(&status), status);
 }
 
 static Result network_state_handle_check_gprs_registration(void)
 {
-    SdkNetRegStatus status = SDK_NET_REG_NOT_REGISTERED;
-    return network_reg_status_to_result(sdk_network_get_cgreg(&status), status);
+    wm_SdkNetRegStatus status = WM_SDK_NET_REG_NOT_REGISTERED;
+    return network_reg_status_to_result(wm_sdk_network_get_cgreg(&status), status);
 }
 
 static Result network_state_handle_check_lte_attachment(void)
 {
-    SdkNetAttStatus status = SDK_NET_DETACHED;
-    if (sdk_network_get_cgatt(&status) != SDK_RESULT_SUCCESS)
+    wm_SdkNetAttStatus status = WM_SDK_NET_DETACHED;
+    if (wm_sdk_network_get_cgatt(&status) != WM_SDK_RESULT_SUCCESS)
         return RESULT_BUSY;
-    return (status == SDK_NET_ATTACHED) ? RESULT_SUCCESS : RESULT_BUSY;
+    return (status == WM_SDK_NET_ATTACHED) ? RESULT_SUCCESS : RESULT_BUSY;
 }
 
 static Result network_state_handle_setup_pdp(void)
 {
-    if (sdk_network_set_pdp_context((UINT32)g_network_config.cid,
+    if (wm_sdk_network_set_pdp_context((UINT32)g_network_config.cid,
                                     g_network.pdp_type,
-                                    g_network_config.apn) != SDK_RESULT_SUCCESS)
+                                    g_network_config.apn) != WM_SDK_RESULT_SUCCESS)
         return RESULT_BUSY;
 
-    sdk_log_info("NET PDP ctx %d apn=%s type=%s",
+    wm_sdk_log_info("NET PDP ctx %d apn=%s type=%s",
                  g_network_config.cid, g_network_config.apn, g_network.pdp_type);
     return RESULT_SUCCESS;
 }
 
 static Result network_state_handle_activate_pdp(void)
 {
-    return (sdk_network_activate_pdp(1U, (UINT32)g_network_config.cid) == SDK_RESULT_SUCCESS)
+    return (wm_sdk_network_activate_pdp(1U, (UINT32)g_network_config.cid) == WM_SDK_RESULT_SUCCESS)
                ? RESULT_SUCCESS : RESULT_BUSY;
 }
 
 static Result network_state_handle_get_ip(void)
 {
-    SdkIpAddress ip;
+    wm_SdkIpAddress ip;
     memset(&ip, 0, sizeof(ip));
 
-    if (sdk_network_get_ip_address((UINT32)g_network_config.cid, &ip) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_network_get_ip_address((UINT32)g_network_config.cid, &ip) != WM_SDK_RESULT_SUCCESS)
         return RESULT_BUSY;
     if (ip.ipv4[0] == '\0' && ip.ipv6[0] == '\0')
         return RESULT_BUSY;
 
-    sdk_log_info("NET IP %s%s%s",
+    wm_sdk_log_info("NET IP %s%s%s",
                  ip.ipv4[0] ? ip.ipv4 : "",
                  (ip.ipv4[0] && ip.ipv6[0]) ? " / " : "",
                  ip.ipv6[0] ? ip.ipv6 : "");
@@ -426,7 +426,7 @@ static Result network_state_handle_get_ip(void)
 }
 
 /* Reference 4-way health check: CREG + CGREG + CGATT + IP must all pass.
- * (Not sdk_network_get_network_status(): that API also requires the wm-lib
+ * (Not wm_sdk_network_get_network_status(): that API also requires the wm-lib
  * gf_pdp_ready flag, which only the kernel's own connection path sets - it
  * stays 0 for a PDP context activated directly via AT+CGACT.) */
 static Result network_health_check(void)
@@ -439,7 +439,7 @@ static Result network_health_check(void)
     };
     for (int i = 0; i < 4; i++) {
         if (results[i] != RESULT_SUCCESS) {
-            sdk_log_warning("NET health fail i=%d r=%d", i, (int)results[i]);
+            wm_sdk_log_warning("NET health fail i=%d r=%d", i, (int)results[i]);
             return RESULT_ERROR;
         }
     }
@@ -453,10 +453,10 @@ static Result network_state_handle_connected(void)
 {
     static UINT32 connected_start_ticks   = 0;
     static UINT32 last_health_check_ticks = 0;
-    UINT32 now_ticks = sdk_get_ticks();
+    UINT32 now_ticks = wm_sdk_get_ticks();
 
     if (connected_start_ticks == 0) {
-        sdk_debug_print("NET conn enter\r\n");
+        wm_sdk_debug_print("NET conn enter\r\n");
         connected_start_ticks   = (now_ticks == 0U) ? 1U : now_ticks;
         last_health_check_ticks = connected_start_ticks;
         return RESULT_BUSY;
@@ -467,12 +467,12 @@ static Result network_state_handle_connected(void)
     if ((now_ticks - last_health_check_ticks) >= NETWORK_HEALTH_CHECK_INTERVAL_MS) {
         last_health_check_ticks = (now_ticks == 0U) ? 1U : now_ticks;
         if (network_health_check() != RESULT_SUCCESS) {
-            sdk_log_warning("NET conn drop (health check failed)");
+            wm_sdk_log_warning("NET conn drop (health check failed)");
             connected_start_ticks   = 0;
             last_health_check_ticks = 0;
             return RESULT_SUCCESS;   /* -> DISCONNECTED */
         }
-        sdk_debug_print("NET conn health ok\r\n");
+        wm_sdk_debug_print("NET conn health ok\r\n");
     }
     return RESULT_BUSY;
 }
@@ -481,7 +481,7 @@ static Result network_state_handle_disconnected(void)
 {
     network_set_connected(false);
     /* Best-effort context teardown so the next cycle starts clean */
-    (void)sdk_network_activate_pdp(0U, (UINT32)g_network_config.cid);
+    (void)wm_sdk_network_activate_pdp(0U, (UINT32)g_network_config.cid);
     return RESULT_SUCCESS;
 }
 
@@ -495,13 +495,13 @@ static void network_reset_cfun_restart_state(void)
 
 static Result network_state_handle_restart_cfun(void)
 {
-    UINT32 now = sdk_get_ticks();
+    UINT32 now = wm_sdk_get_ticks();
 
     switch (g_network.cfun_step) {
     case CFUN_STEP_IDLE:
-        if (sdk_network_set_cfun(0U) != SDK_RESULT_SUCCESS)
+        if (wm_sdk_network_set_cfun(0U) != WM_SDK_RESULT_SUCCESS)
             return RESULT_BUSY;
-        sdk_log_info("NET CFUN=0");
+        wm_sdk_log_info("NET CFUN=0");
         g_network.cfun_step      = CFUN_STEP_WAIT_OFF;
         g_network.cfun_step_tick = now;
         return RESULT_BUSY;
@@ -509,9 +509,9 @@ static Result network_state_handle_restart_cfun(void)
     case CFUN_STEP_WAIT_OFF:
         if ((now - g_network.cfun_step_tick) < NETWORK_CFUN_OFF_SETTLE_MS)
             return RESULT_BUSY;
-        if (sdk_network_set_cfun(1U) != SDK_RESULT_SUCCESS)
+        if (wm_sdk_network_set_cfun(1U) != WM_SDK_RESULT_SUCCESS)
             return RESULT_BUSY;
-        sdk_log_info("NET CFUN=1");
+        wm_sdk_log_info("NET CFUN=1");
         g_network.cfun_step      = CFUN_STEP_WAIT_ON;
         g_network.cfun_step_tick = now;
         return RESULT_BUSY;
@@ -530,7 +530,7 @@ static Result network_state_handle_restart_cfun(void)
  *--------------------------------------------------------------*/
 static void network_handle_urc(urcEvent_e event)
 {
-    sdk_debug_print("NET URC %d in %s\r\n",
+    wm_sdk_debug_print("NET URC %d in %s\r\n",
                     (int)event, weware_network_state_to_string(g_network.state));
 
     switch (event) {
@@ -539,20 +539,20 @@ static void network_handle_urc(urcEvent_e event)
         /* Positive indicator: during bring-up the state machine verifies via
          * the AT status reads itself; only a DISCONNECTED idle needs a kick. */
         if (g_network.state == NETWORK_STATE_DISCONNECTED) {
-            sdk_log_info("NET URC recovery -> INIT");
+            wm_sdk_log_info("NET URC recovery -> INIT");
             network_set_state(NETWORK_STATE_INIT);
         }
         break;
 
     case URC_NET_DISCONNECTED:
         if (g_network.state == NETWORK_STATE_CONNECTED) {
-            sdk_log_error("NET URC detach -> DISCONNECTED");
+            wm_sdk_log_error("NET URC detach -> DISCONNECTED");
             network_set_state(NETWORK_STATE_DISCONNECTED);
         }
         break;
 
     case URC_PDP_INACTIVE:
-        sdk_log_error("NET URC PDP deactivated -> DISCONNECTED");
+        wm_sdk_log_error("NET URC PDP deactivated -> DISCONNECTED");
         network_set_state(NETWORK_STATE_DISCONNECTED);
         break;
 
@@ -587,7 +587,7 @@ static void network_on_sim_available(const EventData *event, void *user_data)
 
     /* Reference behavior: a freshly available SIM restarts the radio
      * (RESTART_CFUN) so registration starts clean. */
-    sdk_log_info("NET SIM available: RESTART_CFUN (s=%s)",
+    wm_sdk_log_info("NET SIM available: RESTART_CFUN (s=%s)",
                  weware_network_state_to_string(g_network.state));
     network_set_state(NETWORK_STATE_RESTART_CFUN);
 }
@@ -599,7 +599,7 @@ static void network_on_sim_unavailable(const EventData *event, void *user_data)
 
     /* SIM removal surfaces through modem/network URCs; do not force
      * a disconnect from here (reference same). */
-    sdk_debug_print("NET SIM unavailable ignored (s=%s)\r\n",
+    wm_sdk_debug_print("NET SIM unavailable ignored (s=%s)\r\n",
                     weware_network_state_to_string(g_network.state));
 }
 
@@ -608,7 +608,7 @@ static void network_on_sim_unavailable(const EventData *event, void *user_data)
  *--------------------------------------------------------------*/
 static void network_check_state_timeout(void)
 {
-    UINT32 elapsed = sdk_get_ticks() - g_network.state_entry_tick;
+    UINT32 elapsed = wm_sdk_get_ticks() - g_network.state_entry_tick;
     UINT32 timeout = 0;
     UINT32 i;
 
@@ -621,7 +621,7 @@ static void network_check_state_timeout(void)
     if (timeout == 0U || elapsed < timeout)
         return;
 
-    sdk_log_warning("NET state timeout s=%s t=%lu",
+    wm_sdk_log_warning("NET state timeout s=%s t=%lu",
                     weware_network_state_to_string(g_network.state),
                     (unsigned long)elapsed);
 
@@ -636,26 +636,26 @@ static void network_check_state_timeout(void)
 static void network_check_overall_timeout(void)
 {
     if (g_network.connected) {
-        g_network.not_connected_since = sdk_get_ticks();
+        g_network.not_connected_since = wm_sdk_get_ticks();
         return;
     }
     /* No SIM is not a network fault - never reset while waiting for one */
     if (g_network.state == NETWORK_STATE_CHECK_SIM) {
-        g_network.not_connected_since = sdk_get_ticks();
+        g_network.not_connected_since = wm_sdk_get_ticks();
         return;
     }
-    if ((sdk_get_ticks() - g_network.not_connected_since) < NETWORK_OVERALL_TIMEOUT_MS)
+    if ((wm_sdk_get_ticks() - g_network.not_connected_since) < NETWORK_OVERALL_TIMEOUT_MS)
         return;
 
     /* Reference escalation: broadcast EVENT_RESET_SOFT so the reset handler
      * persists queues/preboot state before rebooting (was a direct
-     * sdk_system_reset() that lost all persisted state). */
-    sdk_log_error("NET not connected for %lu ms - requesting soft reset",
+     * wm_sdk_system_reset() that lost all persisted state). */
+    wm_sdk_log_error("NET not connected for %lu ms - requesting soft reset",
                   (unsigned long)NETWORK_OVERALL_TIMEOUT_MS);
     event_manager_broadcast(EVENT_RESET_SOFT, "Network Manager", NULL, 0);
     /* Re-arm so the broadcast is not repeated every loop while the deferred
      * reset is carried out. */
-    g_network.not_connected_since = sdk_get_ticks();
+    g_network.not_connected_since = wm_sdk_get_ticks();
 }
 
 /*---------------------------------------------------------------
@@ -666,10 +666,10 @@ static void network_task_entry(void *arg)
     NetworkState last_state = NETWORK_STATE_INIT;
 
     (void)arg;
-    sdk_log_info("Network task started");
+    wm_sdk_log_info("Network task started");
 
-    g_network.state_entry_tick    = sdk_get_ticks();
-    g_network.not_connected_since = sdk_get_ticks();
+    g_network.state_entry_tick    = wm_sdk_get_ticks();
+    g_network.not_connected_since = wm_sdk_get_ticks();
 
     for (;;) {
         /* Task-stall watchdog feed (module_manager_monitor_tasks) */
@@ -681,11 +681,11 @@ static void network_task_entry(void *arg)
         network_refresh_radio_info(false);
 
         if (last_state != g_network.state) {
-            sdk_log_info("NET %s -> %s",
+            wm_sdk_log_info("NET %s -> %s",
                          weware_network_state_to_string(last_state),
                          weware_network_state_to_string(g_network.state));
             last_state = g_network.state;
-            g_network.state_entry_tick = sdk_get_ticks();
+            g_network.state_entry_tick = wm_sdk_get_ticks();
         }
 
         network_check_state_timeout();
@@ -808,7 +808,7 @@ static void network_task_entry(void *arg)
             break;
         }
 
-        sdk_task_sleep(NETWORK_TASK_INTERVAL_MS);
+        wm_sdk_task_sleep(NETWORK_TASK_INTERVAL_MS);
     }
 }
 
@@ -838,7 +838,7 @@ bool weware_network_get_radio_snapshot(NetworkRadioSnapshot *out)
     return true;
 }
 
-SdkResult weware_network_set_apn(const char *apn, const char *pdp_type)
+wm_SdkResult weware_network_set_apn(const char *apn, const char *pdp_type)
 {
     if (apn) {
         /* Persists to the config file (reference network_config_set_apn).
@@ -852,14 +852,14 @@ SdkResult weware_network_set_apn(const char *apn, const char *pdp_type)
             strcpy(pass, cfg->password);
         }
         if (network_config_set_apn(apn, user, pass) != RESULT_SUCCESS)
-            return SDK_RESULT_INVALID_PARAM;
+            return WM_SDK_RESULT_INVALID_PARAM;
     }
     if (pdp_type) {
         if (strlen(pdp_type) >= sizeof(g_network.pdp_type))
-            return SDK_RESULT_INVALID_PARAM;
+            return WM_SDK_RESULT_INVALID_PARAM;
         strcpy(g_network.pdp_type, pdp_type);
     }
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
 void weware_network_register_status_callback(weware_network_status_cb_t callback)
@@ -867,13 +867,13 @@ void weware_network_register_status_callback(weware_network_status_cb_t callback
     g_network_status_cb = callback;
 }
 
-SdkResult weware_network_init(void)
+wm_SdkResult weware_network_init(void)
 {
-    sdk_log_info("Initializing network module");
+    wm_sdk_log_info("Initializing network module");
 
     if (g_network.initialized) {
-        sdk_log_warning("Network module already initialized");
-        return SDK_RESULT_SUCCESS;
+        wm_sdk_log_warning("Network module already initialized");
+        return WM_SDK_RESULT_SUCCESS;
     }
 
     /* Config: config_load_from_file fills g_network_config before init runs;
@@ -890,8 +890,8 @@ SdkResult weware_network_init(void)
         nm->config.urc_q_config.element_size > 0U) {
         if (queue_manager_create(&nm->config.urc_q_config,
                                  &nm->config.urc_q) != RESULT_SUCCESS) {
-            sdk_log_error("Network URC queue create failed");
-            return SDK_RESULT_ERROR;
+            wm_sdk_log_error("Network URC queue create failed");
+            return WM_SDK_RESULT_ERROR;
         }
     }
 
@@ -901,35 +901,35 @@ SdkResult weware_network_init(void)
     event_manager_register(EVENT_SIM_UNAVAILABLE, network_on_sim_unavailable, NULL, "Network Manager");
 
     if (g_network_task == NULL) {
-        g_network_task = sdk_task_create(network_task_entry, NULL, "NETMGR",
+        g_network_task = wm_sdk_task_create(network_task_entry, NULL, "NETMGR",
                                          NULL, NETWORK_TASK_STACK,
                                          TP_TIMED_ACTIVITY);
         if (g_network_task == NULL) {
-            sdk_log_error("Failed to create network task");
+            wm_sdk_log_error("Failed to create network task");
             event_manager_unregister_module("Network Manager");
             if (nm && nm->config.urc_q != NULL) {
                 queue_manager_destroy(nm->config.urc_q, &nm->config.urc_q_config);
                 nm->config.urc_q = NULL;
             }
-            return SDK_RESULT_ERROR;
+            return WM_SDK_RESULT_ERROR;
         }
     }
 
     g_network.initialized = true;
-    sdk_log_info("Network module ready (apn=%s cid=%d)",
+    wm_sdk_log_info("Network module ready (apn=%s cid=%d)",
                  g_network_config.apn, g_network_config.cid);
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_network_deinit(void)
+wm_SdkResult weware_network_deinit(void)
 {
     if (!g_network.initialized)
-        return SDK_RESULT_SUCCESS;
+        return WM_SDK_RESULT_SUCCESS;
 
     event_manager_unregister_module("Network Manager");
 
     if (g_network_task != NULL) {
-        sdk_task_delete(g_network_task);
+        wm_sdk_task_delete(g_network_task);
         g_network_task = NULL;
     }
     Module *nm = module_manager_get_module(MODULE_ID_NETWORK);
@@ -942,6 +942,6 @@ SdkResult weware_network_deinit(void)
     g_network.state = NETWORK_STATE_INIT;
     strcpy(g_network.pdp_type, WEWARE_NETWORK_PDP_TYPE);
 
-    sdk_log_info("Network module stopped");
-    return SDK_RESULT_SUCCESS;
+    wm_sdk_log_info("Network module stopped");
+    return WM_SDK_RESULT_SUCCESS;
 }

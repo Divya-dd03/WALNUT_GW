@@ -11,7 +11,7 @@
  *
  * Walnut delta: the kernel emits no SMS URC through urc_processor (see the
  * dispatch note in urc_processor.c). Inbound SMS is delivered by the SDK to the
- * SMS message queue as an SdkSmsMessage of type SDK_SMS_EVT_INCOMING, whose
+ * SMS message queue as an wm_SdkSmsMessage of type WM_SDK_SMS_EVT_INCOMING, whose
  * heap-owned 'text' is the raw +CMGR response the kernel already read for that
  * index. sms_manager.c drains that queue and parks such events here (the same
  * queue the reference's URC processor filled), so the identical "pop URC ->
@@ -23,7 +23,7 @@
 #define WEWARE_URC_SMS_QUEUE_TYPES_H
 
 #include "sdk_platform.h"
-#include "sdk_types.h"   /* SdkSmsMessage (reference: sdk_msg_t from sdk_platform.h) */
+#include "wm_sdk_types.h"   /* wm_SdkSmsMessage (reference: sdk_msg_t from sdk_platform.h) */
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,7 +37,7 @@ extern "C" {
 #define SMS_URC_TEXT_MAX 256U
 
 typedef struct {
-    SdkSmsMessage hdr;                      /* reference: sdk_msg_t hdr */
+    wm_SdkSmsMessage hdr;                      /* reference: sdk_msg_t hdr */
     char          arg3_inline[SMS_URC_TEXT_MAX];
 } sms_urc_queued_t;
 

@@ -8,7 +8,7 @@
  *   WewareTcpConfig has no ignition-detection fields, so the migration is a
  *   no-op and the writeback is dropped.
  * - free() of the tokenization copy uses utils_free_tokenization()
- *   (walnut heap goes through sdk_memory_alloc/free).
+ *   (walnut heap goes through wm_sdk_memory_alloc/free).
  */
 
 #include "system/system_config.h"

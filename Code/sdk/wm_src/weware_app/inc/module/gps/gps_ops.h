@@ -11,7 +11,7 @@
 #ifndef WEWARE_GPS_OPS_H
 #define WEWARE_GPS_OPS_H
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 #include "module/gps/gps_manager.h"
 #include "module/gps/gps_triggers.h"
 
@@ -93,7 +93,7 @@ UINT32 gps_ops_merge_tcp_append(char *msg_buf, UINT32 gps_len,
                                 const char *append, UINT32 append_len);
 
 /** Send GPS (+ optional append) message via the TCP module. */
-SdkResult gps_ops_push_tcp_position_message(const char *data, UINT32 len);
+wm_SdkResult gps_ops_push_tcp_position_message(const char *data, UINT32 len);
 
 /** Login-with-GPS: build last-valid GPS binary (does not use the TCP send path). */
 int gps_ops_build_last_valid_position_for_tcp(char *buffer, int buffer_size);

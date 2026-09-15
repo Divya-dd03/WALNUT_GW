@@ -1,11 +1,11 @@
 /**
  * @file gpio_manager.h
  * @brief GPIO manager - direction, level, and query helpers over the walnut
- *        sdk_gpio API (reference: system/gpio/gpio_manager.h).
+ *        wm_sdk_gpio API (reference: system/gpio/gpio_manager.h).
  *
  * Init/deinit only track manager readiness; GPIO hardware is configured via
  * set_direction / set_level. Walnut adaptation: direction/level enums map to
- * the sdk_gpio 0/1 convention instead of vendor SC_/PIN_ constants.
+ * the wm_sdk_gpio 0/1 convention instead of vendor SC_/PIN_ constants.
  */
 
 #ifndef WEWARE_GPIO_MANAGER_H
@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 /**
- * @brief GPIO direction enumeration (walnut sdk_gpio: 0=input, 1=output)
+ * @brief GPIO direction enumeration (walnut wm_sdk_gpio: 0=input, 1=output)
  */
 typedef enum {
     GPIO_DIRECTION_INPUT = 0,   /**< GPIO input direction */
@@ -27,7 +27,7 @@ typedef enum {
 } GpioDirection;
 
 /**
- * @brief GPIO level enumeration (walnut sdk_gpio: 0=low, 1=high)
+ * @brief GPIO level enumeration (walnut wm_sdk_gpio: 0=low, 1=high)
  */
 typedef enum {
     GPIO_LEVEL_LOW = 0,   /**< GPIO low level (0) */

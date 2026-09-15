@@ -5,7 +5,7 @@
  * Declarations: @c system/storage/flash_paths.h
  *
  * Walnut delta vs CG: the kernel FS (fs_stat / fs_makedir, reached through
- * sdk_file_exists / sdk_file_mkdir -> wm_create_folder) does not accept a
+ * wm_sdk_file_exists / wm_sdk_file_mkdir -> wm_create_folder) does not accept a
  * trailing '/' on a directory path — the vendor libc wrapper strips it
  * (components/libc_wrap/c_wrap.c remove_postfix_if_needed) before mkdir, and
  * the vendor demo / gps_storage create "C:/wegwdir" / "C:/config" without one.
@@ -55,7 +55,7 @@ Result flash_paths_ensure_directory(const char *dir)
     if (!flash_paths_dir_no_slash(dir, path, sizeof(path)))
         return RESULT_INVALID_PARAM;
 
-    if (sdk_file_exists(path) == SDK_RESULT_SUCCESS)
+    if (wm_sdk_file_exists(path) == WM_SDK_RESULT_SUCCESS)
         return RESULT_SUCCESS;
 
     if (file_system_mkdir(path) != RESULT_SUCCESS) {
@@ -64,7 +64,7 @@ Result flash_paths_ensure_directory(const char *dir)
     }
 
     /* Verify: wm_create_folder can report success while the kernel refused. */
-    if (sdk_file_exists(path) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_file_exists(path) != WM_SDK_RESULT_SUCCESS) {
         LOG_ERROR("ensure_dir: '%s' still missing after mkdir", path);
         return RESULT_ERROR;
     }

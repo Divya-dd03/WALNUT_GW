@@ -8,7 +8,7 @@
  * init functions, so module_manager treats them as trivially initialized.
  *
  * Init/deinit/config function pointers use the same cast convention as the
- * reference: SdkResult-returning walnut inits are numerically compatible with
+ * reference: wm_SdkResult-returning walnut inits are numerically compatible with
  * Result (see common/types.h).
  */
 
@@ -70,11 +70,11 @@ static Module g_module_log = {
 };
 
 /* UART manager: enabled, but see the blocker note at the top of
- * src/module/uart/uart_manager.c - the SDK's sdk_uart_set_config() can only ask
+ * src/module/uart/uart_manager.c - the SDK's wm_sdk_uart_set_config() can only ask
  * for drvUart port 0 (the CP debug console), which the driver always refuses,
  * so init currently fails with ERR_UART_CONFIG_ERROR. The board's free
  * full-duplex UART is drvUart port 2 (0xd401f000); reaching it needs an
- * sdk_uart.h implementation that honours the port argument. */
+ * wm_sdk_uart.h implementation that honours the port argument. */
 static Module g_module_uart = {
     .config = {
         .module_id = MODULE_ID_UART,
@@ -327,7 +327,7 @@ static Module g_module_sms = {
         .msg_q = NULL,
         /* Inbound SMS landing queue (reference SMS_URC_Q): the reference's
          * urc_processor pushed the raw +CMTI line here. Walnut has no SMS URC
-         * - sms_manager.c parks the SDK's SDK_SMS_EVT_INCOMING events (raw
+         * - sms_manager.c parks the SDK's WM_SDK_SMS_EVT_INCOMING events (raw
          * +CMGR text inlined, see urc_sms_queue_types.h) so the same
          * pop -> sms_process_urc flow runs. */
         .urc_q_config = {

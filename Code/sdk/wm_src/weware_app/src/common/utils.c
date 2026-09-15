@@ -5,8 +5,8 @@
   * @brief   Common utility helpers - walnut ports of the reference firmware's
   *          common/utils.c (full API). Function bodies are copied verbatim
   *          from the reference except: tokenization memory comes from
-  *          sdk_memory_alloc/free instead of malloc/free, tick reads use
-  *          sdk_get_ticks() (already milliseconds), and TCP response packets
+  *          wm_sdk_memory_alloc/free instead of malloc/free, tick reads use
+  *          wm_sdk_get_ticks() (already milliseconds), and TCP response packets
   *          are built via module/tcp/tcp_ops.h.
   ******************************************************************************
   */
@@ -33,7 +33,7 @@
  * SDK Platform Abstraction Layer
  *--------------------------------------------------------------*/
 #include "wm_global.h"
-#include "sdk_os.h"
+#include "wm_sdk_os.h"
 
 /*---------------------------------------------------------------
  * Log Configuration
@@ -48,10 +48,10 @@
 
 UINT32 utils_get_uptime_seconds(void)
 {
-    return sdk_get_ticks() / 1000u;
+    return wm_sdk_get_ticks() / 1000u;
 }
 
-UINT32 utils_time_to_unix(const SdkNetworkTime *t)
+UINT32 utils_time_to_unix(const wm_SdkNetworkTime *t)
 {
     int      y;
     int      era;
@@ -231,7 +231,7 @@ char *utils_strdup_for_tokenization(const char *src)
         return NULL;
     }
 
-    char *copy = (char *)sdk_memory_alloc((UINT32)(len + 1));
+    char *copy = (char *)wm_sdk_memory_alloc((UINT32)(len + 1));
     if (!copy)
     {
         LOG_ERROR("strdup_for_tokenization failed: allocation failed (len=%zu)", len);
@@ -245,7 +245,7 @@ char *utils_strdup_for_tokenization(const char *src)
 void utils_free_tokenization(char *ptr)
 {
     if (ptr)
-        sdk_memory_free(ptr);
+        wm_sdk_memory_free(ptr);
 }
 
 int utils_strlen_safe(const char *str, size_t max_len)

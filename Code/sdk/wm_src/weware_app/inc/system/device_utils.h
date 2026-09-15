@@ -13,7 +13,7 @@
 
 #include <stdbool.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 /* IMEI is 15 digits; buffers passed to the IMEI getters must hold at least
  * DEVICE_UTILS_IMEI_BUFFER_SIZE bytes (digits + NUL). */
@@ -38,11 +38,11 @@ typedef struct {
 
 /**
  * @brief  Read the IMEI from the modem (with retries) and cache it.
- * @return SDK_RESULT_SUCCESS (also when already initialized),
- *         SDK_RESULT_NOT_SUPPORTED if the platform lacks the API,
- *         SDK_RESULT_ERROR after all retries fail.
+ * @return WM_SDK_RESULT_SUCCESS (also when already initialized),
+ *         WM_SDK_RESULT_NOT_SUPPORTED if the platform lacks the API,
+ *         WM_SDK_RESULT_ERROR after all retries fail.
  */
-SdkResult device_utils_init(void);
+wm_SdkResult device_utils_init(void);
 
 /**
  * @brief  Copy the cached IMEI into @p imei_buffer.
@@ -54,9 +54,9 @@ int device_utils_get_imei(char *imei_buffer);
 
 /**
  * @brief  Manually override the cached IMEI (test/provisioning use).
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult device_utils_set_imei(const char *imei);
+wm_SdkResult device_utils_set_imei(const char *imei);
 
 /**
  * @brief  @return 1 if the IMEI cache is populated, 0 otherwise.
@@ -67,13 +67,13 @@ int device_utils_is_imei_initialized(void);
  * @brief  Drop the cached IMEI and re-read it from the modem.
  * @return same as device_utils_init().
  */
-SdkResult device_utils_refresh_imei(void);
+wm_SdkResult device_utils_refresh_imei(void);
 
 /**
  * @brief  Clear all cached state (IMEI + ST firmware version).
- * @return SDK_RESULT_SUCCESS.
+ * @return WM_SDK_RESULT_SUCCESS.
  */
-SdkResult device_utils_deinit(void);
+wm_SdkResult device_utils_deinit(void);
 
 /**
  * @brief  Copy the cached ST firmware version into @p version_buffer.
@@ -85,9 +85,9 @@ int device_utils_get_st_firmware_version(char *version_buffer);
 
 /**
  * @brief  Cache the ST firmware version (learned from get-device-info).
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult device_utils_set_st_firmware_version(const char *version);
+wm_SdkResult device_utils_set_st_firmware_version(const char *version);
 
 /**
  * @brief  @return 1 if the ST firmware version cache is populated, 0 otherwise.
@@ -113,22 +113,22 @@ void device_utils_peri_reset_all(void);
 
 /**
  * @brief  Mark a peripheral as ready.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult device_utils_peri_set_ready(UINT8 device_id);
+wm_SdkResult device_utils_peri_set_ready(UINT8 device_id);
 
 /**
  * @brief  Store a peripheral's firmware/hardware versions.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult device_utils_peri_set_version(UINT8 device_id, UINT16 fw_version,
+wm_SdkResult device_utils_peri_set_version(UINT8 device_id, UINT16 fw_version,
                                         UINT16 hw_version);
 
 /**
  * @brief  Copy a peripheral's cached info into @p out.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult device_utils_peri_get_info(UINT8 device_id, PeriDeviceInfo *out);
+wm_SdkResult device_utils_peri_get_info(UINT8 device_id, PeriDeviceInfo *out);
 
 /**
  * @brief  @return 1 if the peripheral has been marked ready, 0 otherwise.

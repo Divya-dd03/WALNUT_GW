@@ -10,7 +10,7 @@
 #ifndef WEWARE_GPS_TRIGGERS_H
 #define WEWARE_GPS_TRIGGERS_H
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifdef __cplusplus
 extern "C" {

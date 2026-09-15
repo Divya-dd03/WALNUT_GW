@@ -19,7 +19,7 @@
 
 #include <stdbool.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 #include "common/types.h"   /* Result - state handlers return it (reference) */
 #include "tcp/tcp.h"
 #include "tcp/sdk_functionality_network_compat.h"
@@ -59,7 +59,7 @@ typedef struct {
     /* Set by RCVPLUS; task loop drains recv and clears (non-blocking) */
     volatile UINT8   recv_pending;
 
-    /* timing (sdk_get_ticks() ms, wrap-safe via unsigned subtraction) */
+    /* timing (wm_sdk_get_ticks() ms, wrap-safe via unsigned subtraction) */
     UINT32           state_entry_tick;
     UINT32           session_down_since;   /* overall-timeout anchor        */
     UINT32           total_iterations;

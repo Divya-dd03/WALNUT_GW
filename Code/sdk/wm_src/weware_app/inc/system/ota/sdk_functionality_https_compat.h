@@ -1,19 +1,18 @@
 /**
  * @file sdk_functionality_https_compat.h
- * @brief WALNUT HTTPS constants and types. Include after the kernel sdk_https.h.
+ * @brief WALNUT HTTPS constants and types. Include after the kernel wm_sdk_https.h.
  *
- * The kernel has no vendor returncode enum (it reports SdkResult), so the
+ * The kernel has no vendor returncode enum (it reports wm_SdkResult), so the
  * generic mapping applies - same values as the CG Quectel compat header.
  *
- * WALNUT-specific: the kernel (lib_wmsrc_B.a, sdk_https.c.obj) already
- * exports sdk_https_get_response / _get_response_len and the download trio
- * _configure_ssl / _get_file_size / _read_chunk under the CG names but with
- * DIFFERENT semantics (download calls return 0 ok / <0 fail; CG expects
- * 1 ok / 0 fail), and that archive member cannot be shadowed (sdk_ota.c.obj
- * references it). The remap below moves the CG API for those five names to
- * the sdk_platform_https_* dispatchers, so CG callers keep the CG names and
- * CG semantics. sdk_walnut_https.c #undefs these to reach the kernel
- * originals.
+ * WALNUT-specific: the kernel (lib_wmsrc_B.a, wm_sdk_https.c.obj) exports
+ * wm_sdk_https_get_response / _get_response_len and the download trio
+ * _configure_ssl / _get_file_size / _read_chunk, but with DIFFERENT semantics
+ * from their CG namesakes (the download calls return 0 ok / <0 fail; CG
+ * expects 1 ok / 0 fail). The remap below points the CG spelling of those
+ * five names at the sdk_platform_https_* dispatchers, so CG callers keep the
+ * CG names and CG semantics; sdk_walnut_https.c reaches the kernel versions
+ * through their own wm_sdk_https_* names.
  */
 #ifndef SDK_FUNCTIONALITY_HTTPS_COMPAT_H
 #define SDK_FUNCTIONALITY_HTTPS_COMPAT_H

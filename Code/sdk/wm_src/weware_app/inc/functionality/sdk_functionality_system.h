@@ -1,7 +1,7 @@
 /**
  * @file sdk_functionality_system.h
  * @brief Walnut compat shim: the reference includes this for SDK_SYSTEM_RESET
- *        and reset-reason queries; walnut provides them via sdk_system.h
+ *        and reset-reason queries; walnut provides them via wm_sdk_system.h
  *        (macro mapping in weware_app/inc/sdk_platform.h).
  */
 

@@ -20,7 +20,7 @@
 #ifndef WEWARE_GPS_STORAGE_H
 #define WEWARE_GPS_STORAGE_H
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 #include "module/gps/gps_packet.h"
 
 #ifdef __cplusplus
@@ -35,13 +35,13 @@ extern "C" {
 void gps_storage_handle_post_boot(void);
 
 /** Write @a pkt to disk; no-op if coordinates invalid. */
-SdkResult gps_storage_save_packet(const GpsPacket *pkt);
+wm_SdkResult gps_storage_save_packet(const GpsPacket *pkt);
 
 /** Save @c g_gps.last_valid_gps_data when valid; used on fix lost. */
-SdkResult gps_storage_save_last_valid(void);
+wm_SdkResult gps_storage_save_last_valid(void);
 
 /** Delete stored file (best-effort). */
-SdkResult gps_storage_clear(void);
+wm_SdkResult gps_storage_clear(void);
 
 /*---------------------------------------------------------------
  * Post-boot helpers (reference: system/reset/post_boot_handler)
@@ -49,7 +49,7 @@ SdkResult gps_storage_clear(void);
 /** TRUE when this boot is a normal power-on ('N' or unknown reset reason). */
 BOOL gps_post_boot_is_power_on_reset(void);
 
-/** Human-readable reset reason (walnut sdk_get_reset_reason_string). */
+/** Human-readable reset reason (walnut wm_sdk_get_reset_reason_string). */
 const char *gps_post_boot_reset_reason_string(void);
 
 #ifdef __cplusplus

@@ -8,9 +8,9 @@
   *          identical.
   *
   *          Walnut adaptations:
-  *          - sdk_get_ticks() already returns milliseconds, so the OS-tick
+  *          - wm_sdk_get_ticks() already returns milliseconds, so the OS-tick
   *            conversion macros are identity/ms-based (reference: 200 ticks/s).
-  *          - utils_sleep_ms() maps to sdk_task_sleep().
+  *          - utils_sleep_ms() maps to wm_sdk_task_sleep().
   *          - utils_get_uptime_seconds()/utils_time_to_unix() are walnut
   *            additions kept from the earlier port.
   ******************************************************************************
@@ -29,8 +29,8 @@
  * Weware Platform Includes
  *--------------------------------------------------------------*/
 #include "common/types.h"
-#include "sdk_types.h"
-#include "sdk_os.h"      /* sdk_get_ticks, sdk_task_sleep */
+#include "wm_sdk_types.h"
+#include "wm_sdk_os.h"      /* wm_sdk_get_ticks, wm_sdk_task_sleep */
 #include "module/module_manager.h"
 
 #ifdef __cplusplus
@@ -75,7 +75,7 @@ typedef struct {
 
 /**
  * @brief Systick conversion macros
- * @note  Walnut: sdk_get_ticks() returns MILLISECONDS since boot (wraps with
+ * @note  Walnut: wm_sdk_get_ticks() returns MILLISECONDS since boot (wraps with
  *        UINT32), so the reference's 200-ticks/s conversions collapse to
  *        ms-based identities. Keep using these macros so reference code
  *        ports verbatim.
@@ -88,7 +88,7 @@ typedef struct {
 
 /** Reference code reads the tick counter through SDK_GET_TICKS(). */
 #ifndef SDK_GET_TICKS
-#define SDK_GET_TICKS() sdk_get_ticks()
+#define SDK_GET_TICKS() wm_sdk_get_ticks()
 #endif
 
 /**
@@ -96,7 +96,7 @@ typedef struct {
  */
 #define utils_sleep_ms(ms) \
     do { \
-        sdk_task_sleep(ms); \
+        wm_sdk_task_sleep(ms); \
     } while (0)
 
 /**
@@ -157,7 +157,7 @@ UINT32 utils_get_uptime_seconds(void);
 
 /** Civil date/time -> Unix seconds (days-from-civil; valid for year >= 2000).
  *  Returns 0 when @p t is NULL or the date is out of range. */
-UINT32 utils_time_to_unix(const SdkNetworkTime *t);
+UINT32 utils_time_to_unix(const wm_SdkNetworkTime *t);
 
 /** Milliseconds elapsed since @p start_ticks (from SDK_GET_TICKS()); wrap-safe. */
 UINT32 utils_elapsed_ms_since(UINT32 start_ticks);

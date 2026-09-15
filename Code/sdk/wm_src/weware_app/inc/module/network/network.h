@@ -14,7 +14,7 @@
 
 #include <stdbool.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 /*---------------------------------------------------------------
  * Types
@@ -58,15 +58,15 @@ typedef void (*weware_network_status_cb_t)(bool connected);
 /**
  * @brief  Create the URC queue and start the network state-machine task.
  *         Registers for network URCs and SIM insert/remove notifications.
- * @return SDK_RESULT_SUCCESS or negative error.
+ * @return WM_SDK_RESULT_SUCCESS or negative error.
  */
-SdkResult weware_network_init(void);
+wm_SdkResult weware_network_init(void);
 
 /**
  * @brief  Stop the task, unregister the URC queue and reset module state.
- * @return SDK_RESULT_SUCCESS or negative error.
+ * @return WM_SDK_RESULT_SUCCESS or negative error.
  */
-SdkResult weware_network_deinit(void);
+wm_SdkResult weware_network_deinit(void);
 
 /**
  * @brief  Current data-connection status (PDP up with an IP address).
@@ -102,9 +102,9 @@ bool weware_network_get_radio_snapshot(NetworkRadioSnapshot *out);
  *         SETUP_PDP pass). Pass NULL to keep the current value.
  * @param  apn       access point name, e.g. "wheelseye.com".
  * @param  pdp_type  PDP type string, e.g. "IP" / "IPV4V6"; NULL keeps current.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM if @p apn is too long.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM if @p apn is too long.
  */
-SdkResult weware_network_set_apn(const char *apn, const char *pdp_type);
+wm_SdkResult weware_network_set_apn(const char *apn, const char *pdp_type);
 
 /**
  * @brief  Register a callback for connect/disconnect transitions (one slot;

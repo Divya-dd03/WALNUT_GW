@@ -21,22 +21,22 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "wm_global.h"
-#include "sdk_wm.h"
-#include "sdk_log.h"
-#include "sdk_os.h"
+#include "wm_sdk_wm.h"
+#include "wm_sdk_log.h"
+#include "wm_sdk_os.h"
 /* Common infra (ports of the reference firmware's system layer) */
 #include "common/utils.h"
 #include "common/event_manager.h"
 #include "module/module_manager.h"
 #include "system/system_manager.h"
 
-/* Main application task: each sdk_log/wm_printf call alone costs ~1.3KB of
+/* Main application task: each wm_sdk_log/wm_printf call alone costs ~1.3KB of
  * stack (vsnprintf frames), and system/module init chains go deep. The OTA
  * cycle also runs inline here (reference structure): the HTTPS version check
- * is async (request runs on the kernel worker), but sdk_https_read() needs
+ * is async (request runs on the kernel worker), but wm_sdk_https_read() needs
  * ~8 KB and the kernel's synchronous ranged-download helpers
  * (sdk_https_download_get_file_size/read_chunk) ~16 KB on the caller
- * (sdk_https.h). 10 KB was confirmed to overflow with OTA enabled. */
+ * (wm_sdk_https.h). 10 KB was confirmed to overflow with OTA enabled. */
 #define WEWARE_MAIN_TASK_STACK   (1024 * 24)
 
 /* Log-level threshold used by the WM_LOG_* macros (defined in wm_src lib) */
@@ -58,12 +58,12 @@ static void weware_log_check(void)
     wm_printf("wm_printf : Main APP\r\n");
 
     /* --- SDK log API (USB VCOM via wm_printf) ---------------------------
-     * sdk_debug_print is raw ("%s" - no newline appended); the sdk_log_*
+     * wm_sdk_debug_print is raw ("%s" - no newline appended); the wm_sdk_log_*
      * levels print as "[INFO] ...\r\n" / "[WARN] ...\r\n" / "[ERROR] ...\r\n" */
-    sdk_debug_print("sdk_debug_print : Main APP\r\n");
-    sdk_log_info("sdk_log_info : Main APP\r\n");
-    sdk_log_warning("sdk_log_warning : Main APP\r\n");
-    sdk_log_error("sdk_log_error : Main APP\r\n");
+    wm_sdk_debug_print("wm_sdk_debug_print : Main APP\r\n");
+    wm_sdk_log_info("wm_sdk_log_info : Main APP\r\n");
+    wm_sdk_log_warning("wm_sdk_log_warning : Main APP\r\n");
+    wm_sdk_log_error("wm_sdk_log_error : Main APP\r\n");
 
     /* --- Level-filtered wrappers (forward to sAPI_Debug) ---------------- */
     WM_LOG_DEBUG("WM_LOG_DEBUG : Main APP");
@@ -117,11 +117,11 @@ static void weware_main_task(void *arg)
          * silent for MODULE_TASK_TIMEOUT_SEC triggers a deferred soft reset
          * (reset_handler persists state before the SoC reset). */
         if (module_manager_loop_iteration()) {
-            sdk_debug_print("[weware_main] Module task timeout detected - rebooting\r\n");
+            wm_sdk_debug_print("[weware_main] Module task timeout detected - rebooting\r\n");
             (void)event_manager_broadcast(EVENT_RESET_SOFT, "SYSTEM", NULL, 0);
         }
 
-        sdk_task_sleep(1000);
+        wm_sdk_task_sleep(1000);
     }
 }
 
@@ -135,7 +135,7 @@ int appimg_enter(void *param)
     wm_battery_ID = WM_CURRENT_BATTERY;
     wm_sleep_mode = WM_CURRENT_SLEEP_MODE;
     RTI_LOG("Weware Application Boot Start");
-    if (wm_system_init() != SDK_RESULT_SUCCESS)
+    if (wm_system_init() != WM_SDK_RESULT_SUCCESS)
         RTI_LOG("wm_system_init reported an error");
     RTI_LOG("WM WEWARE SYSTEM INIT DONE ----------------------");
 
@@ -148,7 +148,7 @@ int appimg_enter(void *param)
      * on the kernel app_load task, whose small stack must not host the app.
      * The kernel logs "Customer APP exit code:0" once we return - that line
      * in the boot log is the health check for this contract. */
-    main_task = sdk_task_create(weware_main_task, NULL, "WEMAIN", NULL,
+    main_task = wm_sdk_task_create(weware_main_task, NULL, "WEMAIN", NULL,
                                 WEWARE_MAIN_TASK_STACK, TP_UI_TOP_THREAD);
     if (main_task == NULL) {
         RTI_LOG("FATAL: WEMAIN task create failed - application not started");

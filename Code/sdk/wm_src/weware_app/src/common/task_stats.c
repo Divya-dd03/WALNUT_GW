@@ -46,7 +46,7 @@ static BOOL task_stats_update(sdk_task_ref_t task_ref,
         return FALSE;
     }
 
-    if (sdk_task_get_stack_info(task_ref, &stack_size, &stack_used, &stack_peak) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_task_get_stack_info(task_ref, &stack_size, &stack_used, &stack_peak) != WM_SDK_RESULT_SUCCESS) {
         LOG_WARN("Update failed: task_get_stack_info returned error");
         stats->task_stack_size = 0;
         stats->task_stack_used = 0;

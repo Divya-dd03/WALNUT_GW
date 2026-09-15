@@ -1,14 +1,16 @@
 /**
  * @file sdk_functionality_os.h
- * @brief Walnut compat shim: the reference includes this for sdk_task_*,
- *        sdk_mutex_*, sdk_msgq_*, sdk_memory_* and sdk_system_get_stats.
- *        Walnut's sdk_os.h exposes the same functions natively.
+ * @brief Walnut compat shim: the reference includes this for its task,
+ *        mutex, message-queue, heap and system-stats API. Walnut exposes
+ *        the same functions natively as wm_sdk_task_*, wm_sdk_mutex_*,
+ *        wm_sdk_msgq_*, wm_sdk_memory_* and wm_sdk_system_get_stats()
+ *        (wm_sdk_os.h).
  */
 
 #ifndef WEWARE_WALNUT_SDK_FUNCTIONALITY_OS_H
 #define WEWARE_WALNUT_SDK_FUNCTIONALITY_OS_H
 
-#include "sdk_os.h"
+#include "wm_sdk_os.h"
 
 /* Generic URC/queue message header (CG sdk_platform_platform.h layout).
  * On walnut nothing posts these - CG code passes a queue of this element

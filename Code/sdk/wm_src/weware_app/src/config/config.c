@@ -172,7 +172,7 @@ static Result read_config_header(void *fp, ConfigFileHeader *header, const char 
     while (retry_count < MAX_LOAD_RETRIES && !header_read_success)
     {
         UINT32 read_len = 0;
-        if (sdk_file_read(fp, header, sizeof(ConfigFileHeader), &read_len) == SDK_RESULT_SUCCESS && 
+        if (wm_sdk_file_read(fp, header, sizeof(ConfigFileHeader), &read_len) == WM_SDK_RESULT_SUCCESS && 
             read_len == sizeof(ConfigFileHeader))
         {
             header_read_success = TRUE;
@@ -184,9 +184,9 @@ static Result read_config_header(void *fp, ConfigFileHeader *header, const char 
             {
                 LOG_DEBUG("Header read failed, retrying (%d/%d)", 
                          retry_count, MAX_LOAD_RETRIES);
-                sdk_file_close(fp);
+                wm_sdk_file_close(fp);
                 utils_sleep_ms(CONFIG_LOAD_RETRY_DELAY_MS);
-                fp = sdk_file_open(file_path, "rb");
+                fp = wm_sdk_file_open(file_path, "rb");
                 if (fp == NULL)
                 {
                     LOG_WARN("Failed to reopen file for retry");
@@ -217,14 +217,14 @@ static Result read_config_entry(void *fp, char *module_name, UINT32 *config_size
     }
     
     UINT32 read_len = 0;
-    if (sdk_file_read(fp, module_name, MODULE_NAME_MAX_SIZE, &read_len) != SDK_RESULT_SUCCESS || 
+    if (wm_sdk_file_read(fp, module_name, MODULE_NAME_MAX_SIZE, &read_len) != WM_SDK_RESULT_SUCCESS || 
         read_len != MODULE_NAME_MAX_SIZE)
     {
         LOG_DEBUG("Failed to read module name (read_len=%u)", read_len);
         return RESULT_ERROR;
     }
     
-    if (sdk_file_read(fp, config_size, sizeof(UINT32), &read_len) != SDK_RESULT_SUCCESS ||
+    if (wm_sdk_file_read(fp, config_size, sizeof(UINT32), &read_len) != WM_SDK_RESULT_SUCCESS ||
         read_len != sizeof(UINT32))
     {
         LOG_DEBUG("Failed to read config size (read_len=%u)", read_len);
@@ -259,7 +259,7 @@ static Result load_module_config(void *fp, Module *module, UINT32 file_config_si
     size_t load_size = (file_config_size < expected_size) ? file_config_size : expected_size;
     
     UINT32 read_len = 0;
-    if (sdk_file_read(fp, module->config.config_ptr, load_size, &read_len) != SDK_RESULT_SUCCESS ||
+    if (wm_sdk_file_read(fp, module->config.config_ptr, load_size, &read_len) != WM_SDK_RESULT_SUCCESS ||
         read_len != load_size)
     {
         LOG_WARN("Failed to load config for '%s' (read_len=%u, expected=%zu)",
@@ -268,7 +268,7 @@ static Result load_module_config(void *fp, Module *module, UINT32 file_config_si
         /* Skip remaining bytes if file version is newer */
         if (file_config_size > load_size)
         {
-            sdk_file_seek(fp, file_config_size - load_size, 1);  /* SEEK_CUR = 1 */
+            wm_sdk_file_seek(fp, file_config_size - load_size, 1);  /* SEEK_CUR = 1 */
         }
         return RESULT_ERROR;
     }
@@ -276,7 +276,7 @@ static Result load_module_config(void *fp, Module *module, UINT32 file_config_si
     /* Skip remaining bytes if file version is newer */
     if (file_config_size > load_size)
     {
-        sdk_file_seek(fp, file_config_size - load_size, 1);  /* SEEK_CUR = 1 */
+        wm_sdk_file_seek(fp, file_config_size - load_size, 1);  /* SEEK_CUR = 1 */
         LOG_DEBUG("Config '%s' version mismatch (file=%u, expected=%zu), skipped %u bytes",
                  module->config.name, file_config_size, expected_size, file_config_size - load_size);
     }
@@ -347,7 +347,7 @@ static Result write_config_header(void *fp, UINT32 module_count)
     };
 
     UINT32 written = 0;
-    if (sdk_file_write(fp, &header, sizeof(ConfigFileHeader), &written) != SDK_RESULT_SUCCESS ||
+    if (wm_sdk_file_write(fp, &header, sizeof(ConfigFileHeader), &written) != WM_SDK_RESULT_SUCCESS ||
         written != sizeof(ConfigFileHeader))
     {
         LOG_ERROR("Failed to write header (written=%u, expected=%zu)",
@@ -387,7 +387,7 @@ static Result write_module_entry(void *fp, Module *module)
     UINT32 written = 0;
     
     /* Write module name */
-    if (sdk_file_write(fp, module_name, sizeof(module_name), &written) != SDK_RESULT_SUCCESS ||
+    if (wm_sdk_file_write(fp, module_name, sizeof(module_name), &written) != WM_SDK_RESULT_SUCCESS ||
         written != sizeof(module_name))
     {
         LOG_ERROR("Failed to write module name for '%s'", module->config.name);
@@ -395,7 +395,7 @@ static Result write_module_entry(void *fp, Module *module)
     }
     
     /* Write config size */
-    if (sdk_file_write(fp, &config_size_uint32, sizeof(config_size_uint32), &written) != SDK_RESULT_SUCCESS ||
+    if (wm_sdk_file_write(fp, &config_size_uint32, sizeof(config_size_uint32), &written) != WM_SDK_RESULT_SUCCESS ||
         written != sizeof(config_size_uint32))
     {
         LOG_ERROR("Failed to write config size for '%s'", module->config.name);
@@ -403,7 +403,7 @@ static Result write_module_entry(void *fp, Module *module)
     }
     
     /* Write config data */
-    if (sdk_file_write(fp, module->config.config_ptr, config_size, &written) != SDK_RESULT_SUCCESS ||
+    if (wm_sdk_file_write(fp, module->config.config_ptr, config_size, &written) != WM_SDK_RESULT_SUCCESS ||
         written != config_size)
     {
         LOG_ERROR("Failed to write config data for '%s' (written=%u, expected=%zu)",
@@ -449,7 +449,7 @@ Result config_load_from_file(const char *config_file_path)
     
     const char *file_path = config_file_path ? config_file_path : CONFIG_FILE_PATH;
 
-    void *fp = sdk_file_open(file_path, "rb");
+    void *fp = wm_sdk_file_open(file_path, "rb");
 
     if (fp == NULL)
     {
@@ -469,7 +469,7 @@ Result config_load_from_file(const char *config_file_path)
     if (header_result != RESULT_SUCCESS)
     {
         LOG_WARN("Failed to read header, using defaults");
-        sdk_file_close(fp);
+        wm_sdk_file_close(fp);
         g_config_file_loaded = TRUE;
         return RESULT_SUCCESS;
     }
@@ -478,7 +478,7 @@ Result config_load_from_file(const char *config_file_path)
     if (header.magic != CONFIG_FILE_MAGIC)
     {
         LOG_WARN("Invalid magic number (0x%08X), using defaults", header.magic);
-        sdk_file_close(fp);
+        wm_sdk_file_close(fp);
         g_config_file_loaded = TRUE;
         return RESULT_SUCCESS;
     }
@@ -487,8 +487,8 @@ Result config_load_from_file(const char *config_file_path)
     {
         LOG_WARN("Version mismatch (file=%u, expected=%u), deleting and recreating with defaults",
                  header.version, CONFIG_FILE_VERSION);
-        sdk_file_close(fp);
-        if (sdk_file_delete(file_path) != SDK_RESULT_SUCCESS)
+        wm_sdk_file_close(fp);
+        if (wm_sdk_file_delete(file_path) != WM_SDK_RESULT_SUCCESS)
             LOG_WARN("Failed to delete outdated config file '%s'", file_path);
         Result save_result = config_save_to_file(file_path);
         if (save_result != RESULT_SUCCESS)
@@ -527,7 +527,7 @@ Result config_load_from_file(const char *config_file_path)
             LOG_DEBUG("Skipping '%s' - not stored or invalid", module_name);
             
             /* Skip config data */
-            sdk_file_seek(fp, config_size, 1);  /* SEEK_CUR = 1 */
+            wm_sdk_file_seek(fp, config_size, 1);  /* SEEK_CUR = 1 */
             continue;
         }
         
@@ -546,7 +546,7 @@ Result config_load_from_file(const char *config_file_path)
         }
     }
     
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     g_config_file_loaded = TRUE;
     
     LOG_INFO("Config loaded: %u succeeded, %u failed", loaded_count, failed_count);
@@ -581,7 +581,7 @@ Result config_save_to_file(const char *config_file_path)
     
     const char *file_path = config_file_path ? config_file_path : CONFIG_FILE_PATH;
     
-    void* fp = sdk_file_open(file_path, "wb");
+    void* fp = wm_sdk_file_open(file_path, "wb");
     if (fp == NULL)
     {
         LOG_ERROR("Failed to open '%s' for writing", file_path);
@@ -591,7 +591,7 @@ Result config_save_to_file(const char *config_file_path)
     /* Write header */
     if (write_config_header(fp, module_count) != RESULT_SUCCESS)
     {
-        sdk_file_close(fp);
+        wm_sdk_file_close(fp);
         return RESULT_ERROR;
     }
     
@@ -622,13 +622,13 @@ Result config_save_to_file(const char *config_file_path)
         else
         {
             LOG_ERROR("Failed to write entry for '%s'", module->config.name);
-            sdk_file_close(fp);
+            wm_sdk_file_close(fp);
             return RESULT_ERROR;
         }
     }
     
-    sdk_file_sync(fp);
-    sdk_file_close(fp);
+    wm_sdk_file_sync(fp);
+    wm_sdk_file_close(fp);
 
     LOG_INFO("Successfully saved %u modules to '%s'", saved_count, file_path);
     return RESULT_SUCCESS;

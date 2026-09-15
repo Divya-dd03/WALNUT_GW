@@ -2,7 +2,7 @@
  * @file network_config.c
  * @brief Network module configuration with default values - walnut port of
  *        the reference firmware's module/network/network_config.c (logic
- *        verbatim; reference LOG macros mapped onto sdk_log_*).
+ *        verbatim; reference LOG macros mapped onto wm_sdk_log_*).
  */
 
 /*===============================================================
@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "sdk_log.h"
+#include "wm_sdk_log.h"
 
 #include "module/network/network_config.h"
 #include "module/module_manager.h"
@@ -46,7 +46,7 @@ void network_config_get_defaults(void *config)
     net_config->cid = 1;
     net_config->auto_connect = TRUE;
 
-    sdk_debug_print("Network default config initialized\r\n");
+    wm_sdk_debug_print("Network default config initialized\r\n");
 }
 
 Result network_config_validate(const void *config)
@@ -54,13 +54,13 @@ Result network_config_validate(const void *config)
     const NetworkConfig *net_config = (const NetworkConfig *)config;
 
     if (!net_config) {
-        sdk_log_error("NET CFG invalid: NULL config");
+        wm_sdk_log_error("NET CFG invalid: NULL config");
         return RESULT_INVALID_PARAM;
     }
 
     /* Validate APN */
     if (strlen(net_config->apn) == 0) {
-        sdk_log_error("NET CFG invalid APN: empty string");
+        wm_sdk_log_error("NET CFG invalid APN: empty string");
         return RESULT_INVALID_PARAM;
     }
 
@@ -71,7 +71,7 @@ NetworkConfig *network_config_get_storage(void)
 {
     const ModuleConfig *module_config = module_manager_get_config(MODULE_ID_NETWORK);
     if (!module_config || !module_config->config_ptr) {
-        sdk_log_error("NET CFG: network module config not found");
+        wm_sdk_log_error("NET CFG: network module config not found");
         return NULL;
     }
     return (NetworkConfig *)module_config->config_ptr;
@@ -81,12 +81,12 @@ Result network_config_set_apn(const char *apn, const char *username, const char 
 {
     NetworkConfig *net_config = network_config_get_storage();
     if (!net_config) {
-        sdk_log_error("NET CFG storage not available");
+        wm_sdk_log_error("NET CFG storage not available");
         return RESULT_ERROR;
     }
 
     if (!apn || strlen(apn) == 0 || strlen(apn) >= sizeof(net_config->apn)) {
-        sdk_log_error("NET CFG invalid APN: %s", apn ? apn : "NULL");
+        wm_sdk_log_error("NET CFG invalid APN: %s", apn ? apn : "NULL");
         return RESULT_INVALID_PARAM;
     }
 
@@ -94,7 +94,7 @@ Result network_config_set_apn(const char *apn, const char *username, const char 
 
     if (username) {
         if (strlen(username) >= sizeof(net_config->username)) {
-            sdk_log_error("NET CFG username too long: %s", username);
+            wm_sdk_log_error("NET CFG username too long: %s", username);
             return RESULT_INVALID_PARAM;
         }
         utils_strncpy_safe(net_config->username, username, sizeof(net_config->username));
@@ -104,7 +104,7 @@ Result network_config_set_apn(const char *apn, const char *username, const char 
 
     if (password) {
         if (strlen(password) >= sizeof(net_config->password)) {
-            sdk_log_error("NET CFG password too long");
+            wm_sdk_log_error("NET CFG password too long");
             return RESULT_INVALID_PARAM;
         }
         utils_strncpy_safe(net_config->password, password, sizeof(net_config->password));
@@ -112,16 +112,16 @@ Result network_config_set_apn(const char *apn, const char *username, const char 
         net_config->password[0] = '\0';
     }
 
-    sdk_log_info("NET CFG APN updated: APN=%s, Username=%s",
+    wm_sdk_log_info("NET CFG APN updated: APN=%s, Username=%s",
                  net_config->apn,
                  net_config->username[0] ? net_config->username : "(empty)");
 
     /* Save configuration to file via config system (reference pattern) */
     config_get_current();
     if (config_save_to_file(NULL) == RESULT_SUCCESS)
-        sdk_debug_print("NET CFG saved to file\r\n");
+        wm_sdk_debug_print("NET CFG saved to file\r\n");
     else
-        sdk_log_error("NET CFG save to file failed");
+        wm_sdk_log_error("NET CFG save to file failed");
 
     return RESULT_SUCCESS;
 }
@@ -129,20 +129,20 @@ Result network_config_set_apn(const char *apn, const char *username, const char 
 Result network_config_set(const char *config_string)
 {
     if (!config_string) {
-        sdk_log_error("NET CFG string is NULL");
+        wm_sdk_log_error("NET CFG string is NULL");
         return RESULT_INVALID_PARAM;
     }
 
     NetworkConfig *config = network_config_get_storage();
     if (!config) {
-        sdk_log_error("NET CFG storage not available");
+        wm_sdk_log_error("NET CFG storage not available");
         return RESULT_ERROR;
     }
 
     /* Make a copy of the string for tokenization */
     char *str_copy = utils_strdup_for_tokenization(config_string);
     if (!str_copy) {
-        sdk_log_error("NET CFG alloc failed for config string");
+        wm_sdk_log_error("NET CFG alloc failed for config string");
         return RESULT_INVALID_PARAM;
     }
 
@@ -176,7 +176,7 @@ Result network_config_set(const char *config_string)
         current_index = utils_config_key_to_index(key_buf, s_net_cfg_keys,
                                                   sizeof(s_net_cfg_keys) / sizeof(s_net_cfg_keys[0]));
         if (current_index < 0) {
-            sdk_log_error("NET CFG unknown key: %s", key_buf);
+            wm_sdk_log_error("NET CFG unknown key: %s", key_buf);
             result = RESULT_INVALID_PARAM;
             break;
         }
@@ -189,7 +189,7 @@ Result network_config_set(const char *config_string)
         {
             size_t len = strlen(value_str);
             if (len == 0 || len >= sizeof(temp_apn)) {
-                sdk_log_error("NET CFG invalid APN: %s (length must be 1-%u)",
+                wm_sdk_log_error("NET CFG invalid APN: %s (length must be 1-%u)",
                               value_str, (unsigned)(sizeof(temp_apn) - 1));
                 result = RESULT_INVALID_PARAM;
                 break;
@@ -202,7 +202,7 @@ Result network_config_set(const char *config_string)
         {
             size_t len = strlen(value_str);
             if (len >= sizeof(temp_username)) {
-                sdk_log_error("NET CFG invalid username length: %u (max %u)",
+                wm_sdk_log_error("NET CFG invalid username length: %u (max %u)",
                               (unsigned)len, (unsigned)(sizeof(temp_username) - 1));
                 result = RESULT_INVALID_PARAM;
                 break;
@@ -215,7 +215,7 @@ Result network_config_set(const char *config_string)
         {
             size_t len = strlen(value_str);
             if (len >= sizeof(temp_password)) {
-                sdk_log_error("NET CFG invalid password length: %u (max %u)",
+                wm_sdk_log_error("NET CFG invalid password length: %u (max %u)",
                               (unsigned)len, (unsigned)(sizeof(temp_password) - 1));
                 result = RESULT_INVALID_PARAM;
                 break;
@@ -228,7 +228,7 @@ Result network_config_set(const char *config_string)
         {
             int value = atoi(value_str);
             if (value < 1 || value > 16) {
-                sdk_log_error("NET CFG invalid CID: %s (must be 1-16)", value_str);
+                wm_sdk_log_error("NET CFG invalid CID: %s (must be 1-16)", value_str);
                 result = RESULT_INVALID_PARAM;
                 break;
             }
@@ -243,7 +243,7 @@ Result network_config_set(const char *config_string)
             } else if (strcasecmp(value_str, "FALSE") == 0 || strcmp(value_str, "0") == 0) {
                 temp_auto_connect = FALSE;
             } else {
-                sdk_log_error("NET CFG invalid auto_connect: %s (must be TRUE/FALSE/1/0)", value_str);
+                wm_sdk_log_error("NET CFG invalid auto_connect: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = RESULT_INVALID_PARAM;
             }
             break;
@@ -263,7 +263,7 @@ Result network_config_set(const char *config_string)
         return result;
 
     if (!parsed_any) {
-        sdk_log_error("NET CFG no recognized keys in config string");
+        wm_sdk_log_error("NET CFG no recognized keys in config string");
         return RESULT_INVALID_PARAM;
     }
 
@@ -277,11 +277,11 @@ Result network_config_set(const char *config_string)
     /* Save configuration to file */
     config_get_current();
     if (config_save_to_file(NULL) == RESULT_SUCCESS)
-        sdk_debug_print("NET CFG saved to file\r\n");
+        wm_sdk_debug_print("NET CFG saved to file\r\n");
     else
-        sdk_log_error("NET CFG save to file failed");
+        wm_sdk_log_error("NET CFG save to file failed");
 
-    sdk_log_info("NET CFG updated");
+    wm_sdk_log_info("NET CFG updated");
     return RESULT_SUCCESS;
 }
 
@@ -292,7 +292,7 @@ Result network_config_get_string(char *buffer, size_t buffer_size)
 
     const ModuleConfig *module_config = module_manager_get_config(MODULE_ID_NETWORK);
     if (!module_config || !module_config->config_ptr) {
-        sdk_log_error("NET CFG: network module config not found");
+        wm_sdk_log_error("NET CFG: network module config not found");
         return RESULT_ERROR;
     }
 
@@ -307,7 +307,7 @@ Result network_config_get_string(char *buffer, size_t buffer_size)
                        config->auto_connect ? "TRUE" : "FALSE");
 
     if (len < 0 || (size_t)len >= buffer_size) {
-        sdk_log_error("NET CFG buffer too small for config string");
+        wm_sdk_log_error("NET CFG buffer too small for config string");
         return RESULT_ERROR;
     }
 

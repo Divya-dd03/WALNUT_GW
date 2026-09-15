@@ -47,7 +47,7 @@
 #include "strings.h"
 #include <stddef.h>
 
-#include "sdk_log.h"
+#include "wm_sdk_log.h"
 
 /*---------------------------------------------------------------
  * Log Configuration
@@ -274,7 +274,7 @@ Result cmd_handler_generic(cmd_enum_t cmd_enum, const char* args_string, char* r
         size_t n;
         for (n = 0; n < buffer_size && response_buffer[n] != '\0'; n++) { }
         if (n >= buffer_size) {
-            sdk_log_warning("Command response too long or unterminated");
+            wm_sdk_log_warning("Command response too long or unterminated");
             return RESULT_ERROR;
         }
     }
@@ -377,7 +377,7 @@ Result cmd_state_handle_check_stm_prefix(ModuleId source_module, const char* com
             (void)pre_boot_handler_save_before_soc_reset(RESET_TYPE_HARD, utc, src);
             /* reference: LOG_ERRC(ERR_PWR_RESET_REQBYSW, ...) + log_storage_flush()
              * - no error_codes.h / async log ring on walnut (see uart_manager.c). */
-            sdk_log_error("ERR_PWR_RESET_REQBYSW: STM system-restart -> whole-device power-cycle (source=%s)",
+            wm_sdk_log_error("ERR_PWR_RESET_REQBYSW: STM system-restart -> whole-device power-cycle (source=%s)",
                       src); /* ERRC */
         }
         return RESULT_SUCCESS;
@@ -647,14 +647,14 @@ static BOOL cmd_delete_folder_resolved_ok(const char *path)
 Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t buffer_size)
 {
     if (!response_buffer || buffer_size == 0) {
-        sdk_log_error("DELETE-FOLDER: invalid response buffer (buf=%p size=%u)",
+        wm_sdk_log_error("DELETE-FOLDER: invalid response buffer (buf=%p size=%u)",
                   (void *)response_buffer, (unsigned)buffer_size);
         return RESULT_ERROR;
     }
     response_buffer[0] = '\0';
 
     if (!args_string) {
-        sdk_log_warning("DELETE-FOLDER: missing args after auth");
+        wm_sdk_log_warning("DELETE-FOLDER: missing args after auth");
         snprintf(response_buffer, buffer_size, "ERROR: Missing folder name");
         return RESULT_INVALID_PARAM;
     }
@@ -663,7 +663,7 @@ Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t 
     utils_strncpy_safe(work, args_string, sizeof(work));
     char *args_trim = utils_trim_whitespace(work);
     if (args_trim[0] == '\0') {
-        sdk_log_warning("DELETE-FOLDER: empty args string");
+        wm_sdk_log_warning("DELETE-FOLDER: empty args string");
         snprintf(response_buffer, buffer_size, "ERROR: Missing folder name");
         return RESULT_INVALID_PARAM;
     }
@@ -671,14 +671,14 @@ Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t 
     char extra[8];
     char name[80];
     if (sscanf(args_trim, "%79s %7s", name, extra) != 1) {
-        sdk_log_warning("DELETE-FOLDER: expected one folder name, args='%s'", args_trim);
+        wm_sdk_log_warning("DELETE-FOLDER: expected one folder name, args='%s'", args_trim);
         snprintf(response_buffer, buffer_size,
                  "ERROR: Pass one folder name only");
         return RESULT_INVALID_PARAM;
     }
 
     if (!cmd_delete_folder_name_valid(name)) {
-        sdk_log_warning("DELETE-FOLDER: invalid folder name '%s'", name);
+        wm_sdk_log_warning("DELETE-FOLDER: invalid folder name '%s'", name);
         snprintf(response_buffer, buffer_size,
                  "ERROR: Invalid folder name (no path or ..)");
         return RESULT_INVALID_PARAM;
@@ -686,45 +686,45 @@ Result cmd_delete_folder(const char *args_string, char *response_buffer, size_t 
 
     char folder[CMD_DELETE_FOLDER_PATH_MAX];
     if (snprintf(folder, sizeof(folder), "%s%s/", FLASH_ROOT, name) >= (int)sizeof(folder)) {
-        sdk_log_warning("DELETE-FOLDER: resolved path truncated (name='%s' root='%s')",
+        wm_sdk_log_warning("DELETE-FOLDER: resolved path truncated (name='%s' root='%s')",
                  name, FLASH_ROOT);
         snprintf(response_buffer, buffer_size, "ERROR: Path too long");
         return RESULT_INVALID_PARAM;
     }
 
     if (!cmd_delete_folder_resolved_ok(folder)) {
-        sdk_log_warning("DELETE-FOLDER: resolved path not under flash root (path='%s')", folder);
+        wm_sdk_log_warning("DELETE-FOLDER: resolved path not under flash root (path='%s')", folder);
         snprintf(response_buffer, buffer_size, "ERROR: Invalid resolved path");
         return RESULT_INVALID_PARAM;
     }
 
-    sdk_log_info("Deleting folder %s", name);
+    wm_sdk_log_info("Deleting folder %s", name);
 
     UINT32 total_deleted = 0;
     UINT32 total_failed  = 0;
     Result pr = file_system_delete_all_files_in_directory(folder, &total_deleted, &total_failed);
 
     if (pr == RESULT_NOT_SUPPORTED) {
-        sdk_log_error("DELETE-FOLDER: list_dir not supported path='%s'", folder);
+        wm_sdk_log_error("DELETE-FOLDER: list_dir not supported path='%s'", folder);
         snprintf(response_buffer, buffer_size,
                  "ERROR: list_dir not supported on this platform");
         return RESULT_ERROR;
     }
     if (pr != RESULT_SUCCESS) {
-        sdk_log_error("DELETE-FOLDER: purge failed path='%s' result=%d", folder, (int)pr);
+        wm_sdk_log_error("DELETE-FOLDER: purge failed path='%s' result=%d", folder, (int)pr);
         snprintf(response_buffer, buffer_size,
                  "ERROR: delete folder failed for '%s'", folder);
         return RESULT_ERROR;
     }
 
     if (total_failed > 0U) {
-        sdk_log_info("Folder %s purge done: %u deleted, %u failed",
+        wm_sdk_log_info("Folder %s purge done: %u deleted, %u failed",
              name, (unsigned)total_deleted, (unsigned)total_failed);
         snprintf(response_buffer, buffer_size, "OK: deleted %u fail %u folder=%s",
                  (unsigned)total_deleted, (unsigned)total_failed, name);
         return RESULT_SUCCESS;
     }
-    sdk_log_info("Folder %s purge done: %u files deleted", name, (unsigned)total_deleted);
+    wm_sdk_log_info("Folder %s purge done: %u files deleted", name, (unsigned)total_deleted);
     snprintf(response_buffer, buffer_size, "OK: deleted %u files folder=%s",
              (unsigned)total_deleted, name);
     return RESULT_SUCCESS;
@@ -744,29 +744,29 @@ Result cmd_factory_reset(const char *args_string, char *response_buffer, size_t 
     (void)args_string;
 
     if (!response_buffer || buffer_size == 0) {
-        sdk_log_error("FACTORY-RESET: invalid response buffer");
+        wm_sdk_log_error("FACTORY-RESET: invalid response buffer");
         return RESULT_ERROR;
     }
     response_buffer[0] = '\0';
 
-    sdk_log_warning("Factory reset started");
+    wm_sdk_log_warning("Factory reset started");
 
     Result w = file_system_wipe_user_flash_c();
     if (w == RESULT_NOT_SUPPORTED) {
-        sdk_log_error("FACTORY-RESET: wipe not supported on this platform");
+        wm_sdk_log_error("FACTORY-RESET: wipe not supported on this platform");
         snprintf(response_buffer, buffer_size,
                  "ERROR: wipe not supported (no reboot)");
         return RESULT_ERROR;
     }
     if (w != RESULT_SUCCESS) {
-        sdk_log_error("FACTORY-RESET: wipe failed result=%d (no reboot)", (int)w);
+        wm_sdk_log_error("FACTORY-RESET: wipe failed result=%d (no reboot)", (int)w);
         snprintf(response_buffer, buffer_size,
                  "ERROR: wipe failed (no reboot)");
         return RESULT_ERROR;
     }
 
     snprintf(response_buffer, buffer_size, "OK: factory folders cleared; rebooting");
-    sdk_log_warning("Factory reset complete, rebooting");
+    wm_sdk_log_warning("Factory reset complete, rebooting");
     (void)event_manager_broadcast(EVENT_RESET_SOFT, "FACTORY-RESET", NULL, 0);
     return RESULT_SUCCESS;
 }
@@ -791,7 +791,7 @@ Result cmd_mod_reboot(const char* args_string, char* response_buffer, size_t buf
         return RESULT_ERROR;
     }
     
-    sdk_log_info("Soft reboot requested");
+    wm_sdk_log_info("Soft reboot requested");
     
     /* Broadcast soft reset event */
     event_manager_broadcast(EVENT_RESET_SOFT, "Command Manager", NULL, 0);
@@ -818,7 +818,7 @@ Result cmd_hard_reset(const char *args_string, char *response_buffer, size_t buf
         response_buffer[0] = '\0';
     }
 
-    sdk_log_warning("Hard reset requested");
+    wm_sdk_log_warning("Hard reset requested");
     SDK_SYSTEM_RESET();
     return RESULT_ERROR;
 }
@@ -842,7 +842,7 @@ Result cmd_force_ota(const char *args_string, char *response_buffer, size_t buff
         return RESULT_ERROR;
     }
 
-    sdk_log_warning("FORCED-OTA requested — bypassing OTA prerequisite + cooldown gates");
+    wm_sdk_log_warning("FORCED-OTA requested — bypassing OTA prerequisite + cooldown gates");
 
     if (ota_manager_force_update() == RESULT_BUSY)
     {
@@ -1051,7 +1051,7 @@ Result cmd_get_dev_info(const char* args_string, char* response_buffer, size_t b
     
     if (len < 0 || (size_t)len >= buffer_size)
     {
-        sdk_log_error("Device info response too long");
+        wm_sdk_log_error("Device info response too long");
         return RESULT_ERROR;
     }
     
@@ -1129,7 +1129,7 @@ Result cmd_get_dev_status(const char* args_string, char* response_buffer, size_t
     
     if (len < 0 || (size_t)len >= buffer_size)
     {
-        sdk_log_error("Device status response too long");
+        wm_sdk_log_error("Device status response too long");
         return RESULT_ERROR;
     }
 

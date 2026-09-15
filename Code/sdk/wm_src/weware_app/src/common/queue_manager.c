@@ -120,10 +120,10 @@ static Result queue_tcp_file_write_compact_record(void *fp, const ModuleMessage 
     hdr[2] = type;
 
     UINT32 written = 0;
-    if (sdk_file_write(fp, hdr, sizeof(hdr), &written) != SDK_RESULT_SUCCESS || written != sizeof(hdr)) {
+    if (wm_sdk_file_write(fp, hdr, sizeof(hdr), &written) != WM_SDK_RESULT_SUCCESS || written != sizeof(hdr)) {
         return RESULT_ERROR;
     }
-    if (sdk_file_write(fp, payload, payload_len, &written) != SDK_RESULT_SUCCESS || written != payload_len) {
+    if (wm_sdk_file_write(fp, payload, payload_len, &written) != WM_SDK_RESULT_SUCCESS || written != payload_len) {
         return RESULT_ERROR;
     }
     *out_record_size = (UINT32)sizeof(hdr) + (UINT32)payload_len;
@@ -137,8 +137,8 @@ static Result queue_tcp_file_read_compact_record(void *fp, ModuleMessage *out, U
 
     UINT8 hdr[3];
     UINT32 io = 0;
-    sdk_file_seek(fp, *io_offset, 0);
-    if (sdk_file_read(fp, hdr, sizeof(hdr), &io) != SDK_RESULT_SUCCESS || io != sizeof(hdr)) {
+    wm_sdk_file_seek(fp, *io_offset, 0);
+    if (wm_sdk_file_read(fp, hdr, sizeof(hdr), &io) != WM_SDK_RESULT_SUCCESS || io != sizeof(hdr)) {
         return RESULT_ERROR;
     }
 
@@ -166,7 +166,7 @@ static Result queue_tcp_file_read_compact_record(void *fp, ModuleMessage *out, U
     out->dynamic_buffer = NULL;
     out->data_len = 0;
 
-    if (sdk_file_read(fp, out->message, payload_len, &io) != SDK_RESULT_SUCCESS || io != payload_len) {
+    if (wm_sdk_file_read(fp, out->message, payload_len, &io) != WM_SDK_RESULT_SUCCESS || io != payload_len) {
         return RESULT_ERROR;
     }
     if (payload_len < MODULE_MESSAGE_INLINE_SIZE) {
@@ -185,7 +185,7 @@ static UINT32 queue_tcp_file_count_records(Queue *q, const QueueConfig *cfg)
 
     char file[64];
     queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
-    void *fp = sdk_file_open(file, "rb");
+    void *fp = wm_sdk_file_open(file, "rb");
     if (!fp) return 0U;
 
     UINT32 offset = q->file_read_offset;
@@ -193,8 +193,8 @@ static UINT32 queue_tcp_file_count_records(Queue *q, const QueueConfig *cfg)
     while (offset + 3U <= q->file_size) {
         UINT8 hdr[3];
         UINT32 io = 0;
-        sdk_file_seek(fp, offset, 0);
-        if (sdk_file_read(fp, hdr, sizeof(hdr), &io) != SDK_RESULT_SUCCESS || io != sizeof(hdr)) break;
+        wm_sdk_file_seek(fp, offset, 0);
+        if (wm_sdk_file_read(fp, hdr, sizeof(hdr), &io) != WM_SDK_RESULT_SUCCESS || io != sizeof(hdr)) break;
         UINT16 payload_len = (UINT16)hdr[0] | ((UINT16)hdr[1] << 8);
         if (payload_len == 0U || payload_len > MODULE_MESSAGE_INLINE_SIZE) break;
         if (offset + 3U + (UINT32)payload_len > q->file_size) break;
@@ -202,7 +202,7 @@ static UINT32 queue_tcp_file_count_records(Queue *q, const QueueConfig *cfg)
         count++;
     }
 
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     return count;
 }
 
@@ -228,7 +228,7 @@ static Result queue_tcp_restore_saved_file_offset(Queue *q, const QueueConfig *c
     if (saved_offset == q->file_size) {
         char file[64];
         queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
-        sdk_file_delete(file);
+        wm_sdk_file_delete(file);
         q->file_size = 0U;
         q->file_read_offset = 0U;
         LOG_INFO("Queue '%s' restored TCP file offset at EOF; consumed overflow file removed",
@@ -267,14 +267,14 @@ static Result queue_tcp_persist_file_offset(Queue *q, const QueueConfig *cfg)
 static inline void queue_lock(Queue *q, const QueueConfig *cfg)
 {
     if (q && cfg && cfg->thread_safe && q->mutex) {
-        sdk_mutex_lock(q->mutex, (UINT32)-1);
+        wm_sdk_mutex_lock(q->mutex, (UINT32)-1);
     }
 }
 
 static inline void queue_unlock(Queue *q, const QueueConfig *cfg)
 {
     if (q && cfg && cfg->thread_safe && q->mutex) {
-        sdk_mutex_unlock(q->mutex);
+        wm_sdk_mutex_unlock(q->mutex);
     }
 }
  
@@ -307,7 +307,7 @@ static Result queue_persist_save(Queue *q, const QueueConfig *cfg)
 
     queue_lock(q, cfg);
 
-    void* fp = sdk_file_open(file, "wb");
+    void* fp = wm_sdk_file_open(file, "wb");
     if (!fp) {
         queue_unlock(q, cfg);
         LOG_WARN("Queue '%s' persist save failed: cannot open file %s", cfg->name, file);
@@ -315,22 +315,22 @@ static Result queue_persist_save(Queue *q, const QueueConfig *cfg)
     }
 
     UINT32 written = 0;
-    if (sdk_file_write(fp, &q->count, sizeof(q->count), &written) != SDK_RESULT_SUCCESS || written != sizeof(q->count) ||
-        sdk_file_write(fp, &q->head, sizeof(q->head), &written) != SDK_RESULT_SUCCESS || written != sizeof(q->head) ||
-        sdk_file_write(fp, &q->tail, sizeof(q->tail), &written) != SDK_RESULT_SUCCESS || written != sizeof(q->tail)) {
+    if (wm_sdk_file_write(fp, &q->count, sizeof(q->count), &written) != WM_SDK_RESULT_SUCCESS || written != sizeof(q->count) ||
+        wm_sdk_file_write(fp, &q->head, sizeof(q->head), &written) != WM_SDK_RESULT_SUCCESS || written != sizeof(q->head) ||
+        wm_sdk_file_write(fp, &q->tail, sizeof(q->tail), &written) != WM_SDK_RESULT_SUCCESS || written != sizeof(q->tail)) {
         goto error;
     }
 
     UINT32 idx = q->head;
     for (UINT32 i = 0; i < q->count; i++) {
         UINT8 *elem = q->buffer + (idx * cfg->element_size);
-        if (sdk_file_write(fp, elem, cfg->element_size, &written) != SDK_RESULT_SUCCESS || written != cfg->element_size) {
+        if (wm_sdk_file_write(fp, elem, cfg->element_size, &written) != WM_SDK_RESULT_SUCCESS || written != cfg->element_size) {
             goto error;
         }
         idx = (idx + 1U) % cfg->capacity;
     }
 
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     queue_unlock(q, cfg);
  
     LOG_INFO("Queue '%s' persisted (%u elements)",
@@ -338,7 +338,7 @@ static Result queue_persist_save(Queue *q, const QueueConfig *cfg)
     return RESULT_SUCCESS;
 
 error:
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     queue_unlock(q, cfg);
     LOG_WARN("Queue '%s' persist save failed: write error", cfg->name);
     return RESULT_ERROR;
@@ -353,7 +353,7 @@ static Result queue_persist_load(Queue *q, const QueueConfig *cfg)
     char file[64];
     queue_make_filename(cfg, file, sizeof(file), ".dat");
 
-    void* fp = sdk_file_open(file, "rb");
+    void* fp = wm_sdk_file_open(file, "rb");
     if (!fp) {
         /* First boot - no persisted data exists, this is normal */
         LOG_DEBUG("Queue '%s' persist load: no persisted data (first boot)", cfg->name);
@@ -364,9 +364,9 @@ static Result queue_persist_load(Queue *q, const QueueConfig *cfg)
 
     UINT32 count, head, tail;
     UINT32 read_len = 0;
-    if (sdk_file_read(fp, &count, sizeof(count), &read_len) != SDK_RESULT_SUCCESS || read_len != sizeof(count) ||
-        sdk_file_read(fp, &head, sizeof(head), &read_len) != SDK_RESULT_SUCCESS || read_len != sizeof(head) ||
-        sdk_file_read(fp, &tail, sizeof(tail), &read_len) != SDK_RESULT_SUCCESS || read_len != sizeof(tail) ||
+    if (wm_sdk_file_read(fp, &count, sizeof(count), &read_len) != WM_SDK_RESULT_SUCCESS || read_len != sizeof(count) ||
+        wm_sdk_file_read(fp, &head, sizeof(head), &read_len) != WM_SDK_RESULT_SUCCESS || read_len != sizeof(head) ||
+        wm_sdk_file_read(fp, &tail, sizeof(tail), &read_len) != WM_SDK_RESULT_SUCCESS || read_len != sizeof(tail) ||
         count > cfg->capacity ||
         head  >= cfg->capacity ||
         tail  >= cfg->capacity) {
@@ -378,7 +378,7 @@ static Result queue_persist_load(Queue *q, const QueueConfig *cfg)
     UINT32 idx = head;
     for (UINT32 i = 0; i < count; i++) {
         UINT8 *elem = q->buffer + (idx * cfg->element_size);
-        if (sdk_file_read(fp, elem, cfg->element_size, &read_len) != SDK_RESULT_SUCCESS || read_len != cfg->element_size) {
+        if (wm_sdk_file_read(fp, elem, cfg->element_size, &read_len) != WM_SDK_RESULT_SUCCESS || read_len != cfg->element_size) {
             goto error;
         }
         idx = (idx + 1U) % cfg->capacity;
@@ -388,7 +388,7 @@ static Result queue_persist_load(Queue *q, const QueueConfig *cfg)
     q->head  = head;
     q->tail  = tail;
 
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     queue_unlock(q, cfg);
 
     LOG_INFO("Queue '%s' restored (%u elements)",
@@ -396,9 +396,9 @@ static Result queue_persist_load(Queue *q, const QueueConfig *cfg)
     return RESULT_SUCCESS;
 
 error:
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     queue_unlock(q, cfg);
-    sdk_file_delete(file);
+    wm_sdk_file_delete(file);
     LOG_WARN("Queue '%s' persist load failed: corrupted or invalid data, file deleted", cfg->name);
     return RESULT_ERROR;
 }
@@ -420,11 +420,11 @@ static Result queue_persist_delete_snapshot(const QueueConfig *cfg)
     }
 
     queue_make_filename(cfg, file, sizeof(file), ".dat");
-    if (sdk_file_exists(file) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_file_exists(file) != WM_SDK_RESULT_SUCCESS) {
         return RESULT_SUCCESS;
     }
 
-    if (sdk_file_delete(file) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_file_delete(file) != WM_SDK_RESULT_SUCCESS) {
         LOG_WARN("Queue '%s' persist snapshot delete failed (%s)", cfg->name, file);
         return RESULT_ERROR;
     }
@@ -475,14 +475,14 @@ static Result queue_file_restore(Queue *q, const QueueConfig *cfg)
     queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
 
     /* Check if overflow file exists */
-    if (sdk_file_exists(file) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_file_exists(file) != WM_SDK_RESULT_SUCCESS) {
         /* File doesn't exist, nothing to restore - this is normal */
         LOG_DEBUG("Queue '%s' overflow restore: no overflow file exists", cfg->name);
         return RESULT_SUCCESS;
     }
 
     /* Open file to get its size */
-    void* fp = sdk_file_open(file, "rb");
+    void* fp = wm_sdk_file_open(file, "rb");
     if (!fp) {
         /* File exists but can't be opened, treat as if it doesn't exist */
         LOG_WARN("Queue '%s' overflow restore: file exists but cannot be opened", cfg->name);
@@ -490,12 +490,12 @@ static Result queue_file_restore(Queue *q, const QueueConfig *cfg)
     }
 
     UINT32 file_size = 0;
-    sdk_file_get_size(fp, &file_size);
-    sdk_file_close(fp);
+    wm_sdk_file_get_size(fp, &file_size);
+    wm_sdk_file_close(fp);
 
     if (file_size <= 0) {
         /* Empty or invalid file, remove it */
-        sdk_file_delete(file);
+        wm_sdk_file_delete(file);
         LOG_DEBUG("Queue '%s' overflow restore: empty file deleted", cfg->name);
         return RESULT_SUCCESS;
     }
@@ -540,7 +540,7 @@ static Result queue_file_append(Queue *q,
          /* Reset file to prevent corruption */
          char file[64];
          queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
-         sdk_file_delete(file);
+         wm_sdk_file_delete(file);
          q->file_size = 0;
          q->file_read_offset = 0;
      }
@@ -550,7 +550,7 @@ static Result queue_file_append(Queue *q,
     if (q->file_size + record_size > cfg->max_file_size) {
          char file[64];
          queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
-         sdk_file_delete(file);  /* Delete old file */
+         wm_sdk_file_delete(file);  /* Delete old file */
          
          LOG_INFO("Queue '%s' overflow file cleared to make room (was %u bytes)", 
                  cfg->name, q->file_size);
@@ -562,7 +562,7 @@ static Result queue_file_append(Queue *q,
     char file[64];
     queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
 
-    void* fp = sdk_file_open(file, "ab+");
+    void* fp = wm_sdk_file_open(file, "ab+");
     if (!fp) {
         LOG_WARN("Queue '%s' overflow append failed: cannot open file %s", cfg->name, file);
         return RESULT_ERROR;
@@ -574,14 +574,14 @@ static Result queue_file_append(Queue *q,
         wr = queue_tcp_file_write_compact_record(fp, (const ModuleMessage *)elem, &compact_written);
     } else {
         UINT32 written = 0;
-        SdkResult ret = sdk_file_write(fp, elem, cfg->element_size, &written);
-        if (ret != SDK_RESULT_SUCCESS || written != cfg->element_size) {
+        wm_SdkResult ret = wm_sdk_file_write(fp, elem, cfg->element_size, &written);
+        if (ret != WM_SDK_RESULT_SUCCESS || written != cfg->element_size) {
             wr = RESULT_ERROR;
         } else {
             compact_written = cfg->element_size;
         }
     }
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
 
     if (wr != RESULT_SUCCESS) {
         LOG_WARN("Queue '%s' overflow append failed", cfg->name);
@@ -609,7 +609,7 @@ static Result queue_file_read(Queue *q,
     char file[64];
     queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
 
-    void* fp = sdk_file_open(file, "rb");
+    void* fp = wm_sdk_file_open(file, "rb");
     if (!fp) {
         LOG_WARN("Queue '%s' overflow read failed: cannot open file %s", cfg->name, file);
         return RESULT_ERROR;
@@ -619,16 +619,16 @@ static Result queue_file_read(Queue *q,
     if (queue_is_tcp_send_q(cfg)) {
         rr = queue_tcp_file_read_compact_record(fp, (ModuleMessage *)out, &q->file_read_offset, q->file_size);
     } else {
-        sdk_file_seek(fp, q->file_read_offset, 0);  /* SEEK_SET = 0 */
+        wm_sdk_file_seek(fp, q->file_read_offset, 0);  /* SEEK_SET = 0 */
         UINT32 read = 0;
-        SdkResult ret = sdk_file_read(fp, out, cfg->element_size, &read);
-        if (ret != SDK_RESULT_SUCCESS || read != cfg->element_size) {
+        wm_SdkResult ret = wm_sdk_file_read(fp, out, cfg->element_size, &read);
+        if (ret != WM_SDK_RESULT_SUCCESS || read != cfg->element_size) {
             rr = RESULT_ERROR;
         } else {
             q->file_read_offset += cfg->element_size;
         }
     }
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     if (rr != RESULT_SUCCESS) {
         LOG_WARN("Queue '%s' overflow read failed", cfg->name);
         return RESULT_ERROR;
@@ -636,7 +636,7 @@ static Result queue_file_read(Queue *q,
 
     if (q->file_read_offset >= q->file_size) {
         /* All data read, delete the overflow file */
-        sdk_file_delete(file);
+        wm_sdk_file_delete(file);
         q->file_size = 0;
         q->file_read_offset = 0;
         LOG_DEBUG("Queue '%s' overflow file emptied and deleted", cfg->name);
@@ -667,26 +667,26 @@ static Result queue_file_read(Queue *q,
          return RESULT_BUSY;
      }
  
-    Queue *q = (Queue*)sdk_memory_alloc(sizeof(Queue));
+    Queue *q = (Queue*)wm_sdk_memory_alloc(sizeof(Queue));
     if (!q) {
         LOG_ERROR("Queue '%s' create failed: out of memory (Queue struct)", cfg->name);
         return RESULT_OUT_OF_MEMORY;
     }
     memset(q, 0, sizeof(Queue));
 
-    q->buffer = (UINT8*)sdk_memory_alloc(cfg->element_size * cfg->capacity);
+    q->buffer = (UINT8*)wm_sdk_memory_alloc(cfg->element_size * cfg->capacity);
     if (!q->buffer) {
-        sdk_memory_free(q);
+        wm_sdk_memory_free(q);
         LOG_ERROR("Queue '%s' create failed: out of memory (buffer, %u bytes)", 
                   cfg->name, cfg->element_size * cfg->capacity);
         return RESULT_OUT_OF_MEMORY;
     }
 
     if (cfg->thread_safe) {
-        SdkResult mutex_result = sdk_mutex_create(&q->mutex, 0);
-        if (mutex_result != SDK_RESULT_SUCCESS) {
-            sdk_memory_free(q->buffer);
-            sdk_memory_free(q);
+        wm_SdkResult mutex_result = wm_sdk_mutex_create(&q->mutex, 0);
+        if (mutex_result != WM_SDK_RESULT_SUCCESS) {
+            wm_sdk_memory_free(q->buffer);
+            wm_sdk_memory_free(q);
             LOG_ERROR("Queue '%s' create failed: mutex creation failed", cfg->name);
             return RESULT_ERROR;
         }
@@ -752,12 +752,12 @@ Result queue_manager_destroy(Queue *q, const QueueConfig *cfg)
     }
  
     if (q->mutex) {
-        sdk_mutex_delete(q->mutex);
+        wm_sdk_mutex_delete(q->mutex);
     }
     if (q->buffer) {
-        sdk_memory_free(q->buffer);
+        wm_sdk_memory_free(q->buffer);
     }
-    sdk_memory_free(q);
+    wm_sdk_memory_free(q);
     
     LOG_INFO("Queue '%s' destroyed", (cfg && cfg->name) ? cfg->name : "unknown");
     return RESULT_SUCCESS;
@@ -965,7 +965,7 @@ static Result queue_file_peek_element(Queue *q, const QueueConfig *cfg, UINT32 w
     char file[64];
     queue_make_filename(cfg, file, sizeof(file), "_overflow.dat");
 
-    void *fp = sdk_file_open(file, "rb");
+    void *fp = wm_sdk_file_open(file, "rb");
     if (!fp) {
         LOG_WARN("Queue '%s' peek file read failed: open %s", cfg->name, file);
         return RESULT_ERROR;
@@ -982,8 +982,8 @@ static Result queue_file_peek_element(Queue *q, const QueueConfig *cfg, UINT32 w
             if (i < which) {
                 UINT8 hdr[3];
                 UINT32 io = 0;
-                sdk_file_seek(fp, offset, 0);
-                if (sdk_file_read(fp, hdr, sizeof(hdr), &io) != SDK_RESULT_SUCCESS || io != sizeof(hdr)) {
+                wm_sdk_file_seek(fp, offset, 0);
+                if (wm_sdk_file_read(fp, hdr, sizeof(hdr), &io) != WM_SDK_RESULT_SUCCESS || io != sizeof(hdr)) {
                     r = RESULT_ERROR;
                     break;
                 }
@@ -1000,33 +1000,33 @@ static Result queue_file_peek_element(Queue *q, const QueueConfig *cfg, UINT32 w
         }
     } else {
         if (cfg->element_size == 0U) {
-            sdk_file_close(fp);
+            wm_sdk_file_close(fp);
             return RESULT_INVALID_PARAM;
         }
         UINT32 unread = q->file_size - q->file_read_offset;
         UINT32 file_slots = unread / cfg->element_size;
         if (which >= file_slots) {
-            sdk_file_close(fp);
+            wm_sdk_file_close(fp);
             return RESULT_NOT_FOUND;
         }
         UINT32 skip_bytes = which * cfg->element_size;
         if (skip_bytes > UINT32_MAX - q->file_read_offset) {
-            sdk_file_close(fp);
+            wm_sdk_file_close(fp);
             return RESULT_ERROR;
         }
         UINT32 abs_off = q->file_read_offset + skip_bytes;
         if (abs_off > q->file_size - cfg->element_size) {
-            sdk_file_close(fp);
+            wm_sdk_file_close(fp);
             return RESULT_ERROR;
         }
-        sdk_file_seek(fp, abs_off, 0);
+        wm_sdk_file_seek(fp, abs_off, 0);
         UINT32 read = 0;
-        SdkResult ret = sdk_file_read(fp, out, cfg->element_size, &read);
-        if (ret != SDK_RESULT_SUCCESS || read != cfg->element_size) {
+        wm_SdkResult ret = wm_sdk_file_read(fp, out, cfg->element_size, &read);
+        if (ret != WM_SDK_RESULT_SUCCESS || read != cfg->element_size) {
             r = RESULT_ERROR;
         }
     }
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     return r;
 }
 

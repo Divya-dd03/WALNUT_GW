@@ -4,7 +4,7 @@
  *
  * Reference (CG) fills this from urc_processor after reassembling modem URC
  * fragments. Walnut delta: the kernel has no GNSS URCs - complete sentences
- * arrive through sdk_gps_set_nmea_callback() (GNSS parser task), are paired
+ * arrive through wm_sdk_gps_set_nmea_callback() (GNSS parser task), are paired
  * in gps_manager.c and queue_push()ed here; no fragment reassembly and no
  * sdk_msg_t header are needed. Payload is NUL-terminated text.
  */

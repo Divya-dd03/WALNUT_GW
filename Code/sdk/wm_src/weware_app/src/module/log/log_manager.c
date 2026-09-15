@@ -4,7 +4,7 @@
  *
  * The reference implementation buffers lines in a lock-free ring flushed by a
  * logger task (UART2 or debug sink). Walnut keeps the same API but formats and
- * forwards synchronously to sdk_debug_print, matching how every other ported
+ * forwards synchronously to wm_sdk_debug_print, matching how every other ported
  * module already logs. TODO(log): port the async ring + UART2 sink if needed.
  */
 
@@ -13,7 +13,7 @@
 
 #include "module/log/log_manager.h"
 #include "module/log/log_config.h"
-#include "sdk_log.h"
+#include "wm_sdk_log.h"
 #include "osi_api.h"
 
 #define LOG_LINE_MAX 256

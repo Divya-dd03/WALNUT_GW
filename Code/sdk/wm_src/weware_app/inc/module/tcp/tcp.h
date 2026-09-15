@@ -18,7 +18,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 /*---------------------------------------------------------------
  * Types
@@ -62,15 +62,15 @@ extern WewareTcpConfig g_tcp_config;
  *--------------------------------------------------------------*/
 /**
  * @brief  Start the TCP client state-machine task.
- * @return SDK_RESULT_SUCCESS or negative error.
+ * @return WM_SDK_RESULT_SUCCESS or negative error.
  */
-SdkResult weware_tcp_init(void);
+wm_SdkResult weware_tcp_init(void);
 
 /**
  * @brief  Stop the task, close the socket and reset module state.
- * @return SDK_RESULT_SUCCESS or negative error.
+ * @return WM_SDK_RESULT_SUCCESS or negative error.
  */
-SdkResult weware_tcp_deinit(void);
+wm_SdkResult weware_tcp_deinit(void);
 
 /**
  * @brief  Current TCP state-machine value (diagnostic).
@@ -93,19 +93,19 @@ bool weware_tcp_is_ready(void);
  *         The queue absorbs payloads while the session is down; the state
  *         machine batches up to 5 rows per send and pops them only after
  *         the server ACK. Max payload: MODULE_MESSAGE_INLINE_SIZE bytes.
- * @return SDK_RESULT_SUCCESS if queued;
- *         SDK_RESULT_BUSY if the queue (and its file overflow) is full;
- *         SDK_RESULT_ERROR if the queue does not exist;
- *         SDK_RESULT_INVALID_PARAM on bad arguments.
+ * @return WM_SDK_RESULT_SUCCESS if queued;
+ *         WM_SDK_RESULT_BUSY if the queue (and its file overflow) is full;
+ *         WM_SDK_RESULT_ERROR if the queue does not exist;
+ *         WM_SDK_RESULT_INVALID_PARAM on bad arguments.
  */
-SdkResult weware_tcp_send(const void *data, UINT16 len);
+wm_SdkResult weware_tcp_send(const void *data, UINT16 len);
 
 /**
  * @brief  Force-close the connection and re-run the connect sequence
  *         (used after a config change).
- * @return SDK_RESULT_SUCCESS.
+ * @return WM_SDK_RESULT_SUCCESS.
  */
-SdkResult weware_tcp_reset_connection(void);
+wm_SdkResult weware_tcp_reset_connection(void);
 
 /*---------------------------------------------------------------
  * Public API (configuration - tcp_config.c)
@@ -122,15 +122,15 @@ void weware_tcp_config_get_defaults(WewareTcpConfig *config);
 
 /**
  * @brief  Validate every field of @p config.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult weware_tcp_config_validate(const WewareTcpConfig *config);
+wm_SdkResult weware_tcp_config_validate(const WewareTcpConfig *config);
 
 /**
  * @brief  Set server endpoint and reset the connection to apply it.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult weware_tcp_config_set_server(const char *server_ip, UINT16 server_port);
+wm_SdkResult weware_tcp_config_set_server(const char *server_ip, UINT16 server_port);
 
 /**
  * @brief  Apply a comma-separated "key:value" config string, e.g.
@@ -138,16 +138,16 @@ SdkResult weware_tcp_config_set_server(const char *server_ip, UINT16 server_port
  *          retry:10000,loginwithgps:false,live-first:true".
  *         All values validate before any is applied; on success the
  *         connection is reset to pick up the new settings.
- * @return SDK_RESULT_SUCCESS or SDK_RESULT_INVALID_PARAM.
+ * @return WM_SDK_RESULT_SUCCESS or WM_SDK_RESULT_INVALID_PARAM.
  */
-SdkResult weware_tcp_config_set(const char *config_string);
+wm_SdkResult weware_tcp_config_set(const char *config_string);
 
 /**
  * @brief  Render the current config as a "key:value" string (same
  *         format accepted by weware_tcp_config_set()).
- * @return SDK_RESULT_SUCCESS, SDK_RESULT_INVALID_PARAM or
- *         SDK_RESULT_ERROR if @p buffer is too small.
+ * @return WM_SDK_RESULT_SUCCESS, WM_SDK_RESULT_INVALID_PARAM or
+ *         WM_SDK_RESULT_ERROR if @p buffer is too small.
  */
-SdkResult weware_tcp_config_get_string(char *buffer, size_t buffer_size);
+wm_SdkResult weware_tcp_config_get_string(char *buffer, size_t buffer_size);
 
 #endif /* WEWARE_TCP_H */

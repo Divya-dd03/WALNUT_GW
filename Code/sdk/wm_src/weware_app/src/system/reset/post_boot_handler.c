@@ -19,7 +19,7 @@ static BOOL                        s_init_done;
 
 static BOOL soc_reason_is_power_key(UINT32 code)
 {
-    /* Walnut (sdk_system.h): reason codes are ASCII - 'N' = normal power on.
+    /* Walnut (wm_sdk_system.h): reason codes are ASCII - 'N' = normal power on.
      * Reference SIMCOM code 2 / "POWER-KEY" kept for portability. */
     if (code == (UINT32)'N' || code == 2u)
         return TRUE;

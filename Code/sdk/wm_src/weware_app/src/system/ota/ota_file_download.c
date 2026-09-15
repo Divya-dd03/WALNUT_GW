@@ -35,7 +35,7 @@
 /*
  * OTA_DOWNLOAD_TEST: when defined, the SIMCOM image is downloaded to a plain
  * flash file (OTA_DOWNLOAD_TEST_FILE_PATH) instead of being streamed into the
- * SIMCOM app package (sdk_app_package_*). Lets the download path be validated
+ * SIMCOM app package (wm_sdk_app_package_*). Lets the download path be validated
  * end-to-end without touching the update partition. Undefine for production.
  */
 #define OTA_DOWNLOAD_TEST
@@ -192,18 +192,18 @@ int ota_http_check_version(const char *fw, const char *hw,
                      fw, hw, OTA_ARTIFACT_TYPE_BIN,
                      imei_field, mac_field);
     if (n < 0 || (size_t)n >= sizeof(payload)) {
-        sdk_log_error("OTA: version-check payload too large");
+        wm_sdk_log_error("OTA: version-check payload too large");
         return -1;
     }
 
-    sdk_debug_print("OTA: version-check POST key=%s", artifact_key);
+    wm_sdk_debug_print("OTA: version-check POST key=%s", artifact_key);
 
     size_t resp_len = 0;
     int ok = sdk_https_request(SDK_HTTPS_METHOD_POST, OTA_CHECK_VERSION_URL_STAGE,
                                payload, "application/json",
                                resp_buf, resp_buf_size, &resp_len);
     if (!ok || resp_len == 0) {
-        sdk_debug_print("OTA: version-check request failed");
+        wm_sdk_debug_print("OTA: version-check request failed");
         return -1;
     }
 
@@ -216,13 +216,13 @@ int ota_http_check_version(const char *fw, const char *hw,
     }
 
     if (!ota_http_is_success(resp_buf)) {
-        sdk_debug_print("OTA: version-check success=false");
+        wm_sdk_debug_print("OTA: version-check success=false");
         return -1;
     }
 
     char *data_start = (char *)ota_http_find_data(resp_buf);
     if (!data_start) {
-        sdk_debug_print("OTA: no data object — no update");
+        wm_sdk_debug_print("OTA: no data object — no update");
         return 0;   /* no update available */
     }
 
@@ -230,11 +230,11 @@ int ota_http_check_version(const char *fw, const char *hw,
     char *data_end = (resp_buf + resp_len < buf_end) ? (resp_buf + resp_len) : buf_end;
 
     if (!ota_http_find_artifact(data_start, data_end, artifact_key, url_out, url_size, crc_out)) {
-        sdk_debug_print("OTA: no artifact for key %s", artifact_key);
+        wm_sdk_debug_print("OTA: no artifact for key %s", artifact_key);
         return 0;   /* no matching artifact — no update */
     }
 
-    sdk_debug_print("OTA: artifact URL found for key %s", artifact_key);
+    wm_sdk_debug_print("OTA: artifact URL found for key %s", artifact_key);
     return 1;
 }
 
@@ -248,7 +248,7 @@ int ota_http_check_version(const char *fw, const char *hw,
 BOOL ota_flash_has_space_for_download(UINT32 file_size_bytes, const char *replace_path)
 {
     if (file_size_bytes == 0) {
-        sdk_log_error("OTA: invalid download size 0");
+        wm_sdk_log_error("OTA: invalid download size 0");
         return FALSE;
     }
 
@@ -263,25 +263,25 @@ BOOL ota_flash_has_space_for_download(UINT32 file_size_bytes, const char *replac
     INT64 freeb = 0;
     INT64 used = 0;
     if (file_system_get_disk_info(FLASH_ROOT, &total, &freeb, &used) != RESULT_SUCCESS) {
-        sdk_log_error("OTA: flash disk info unavailable");
+        wm_sdk_log_error("OTA: flash disk info unavailable");
         return FALSE;
     }
 
     UINT64 need = (UINT64)file_size_bytes + (UINT64)OTA_FLASH_DOWNLOAD_MARGIN_BYTES;
     if (freeb < 0 || (UINT64)freeb < need) {
-        sdk_log_error("OTA: insufficient flash (need %llu B incl. margin, free %lld B)",
+        wm_sdk_log_error("OTA: insufficient flash (need %llu B incl. margin, free %lld B)",
                   (unsigned long long)need, (long long)freeb);
         return FALSE;
     }
 
-    sdk_log_info("OTA: flash OK for download (%u B, free %lld B)",
+    wm_sdk_log_info("OTA: flash OK for download (%u B, free %lld B)",
              file_size_bytes, (long long)freeb);
     return TRUE;
 }
 
 static int ota_download_init_https(void **msgq)
 {
-    *msgq = sdk_msgq_create("ota_download_msgq", sizeof(sdk_msg_t), 8, 0);
+    *msgq = wm_sdk_msgq_create("ota_download_msgq", sizeof(sdk_msg_t), 8, 0);
     if (!*msgq)
     {
         SDK_DEBUG_PRINT("Failed to create HTTPS URC message queue");
@@ -296,7 +296,7 @@ static int ota_download_init_https(void **msgq)
         if (https_error != SDK_HTTPS_SUCCESS)
         {
             SDK_DEBUG_PRINT("HTTPS service initialization failed");
-            sdk_msgq_delete(*msgq);
+            wm_sdk_msgq_delete(*msgq);
             *msgq = NULL;
             return 0;
         }
@@ -306,7 +306,7 @@ static int ota_download_init_https(void **msgq)
     {
         SDK_DEBUG_PRINT("Failed to configure SSL");
         sdk_https_download_terminate();
-        sdk_msgq_delete(*msgq);
+        wm_sdk_msgq_delete(*msgq);
         *msgq = NULL;
         return 0;
     }
@@ -319,7 +319,7 @@ static void ota_download_cleanup_https(void *msgq)
     sdk_https_download_terminate();
     if (msgq)
     {
-        sdk_msgq_delete(msgq);
+        wm_sdk_msgq_delete(msgq);
     }
 }
 
@@ -379,13 +379,13 @@ static int ota_download_stream(UINT32 file_size, const char *label,
         if (!ota_download_read_chunk(download_offset, chunk_size,
                                      scratch, scratch_size, &bytes_read))
         {
-            sdk_log_error("OTA: %s firmware download failed at offset %u", label, download_offset);
+            wm_sdk_log_error("OTA: %s firmware download failed at offset %u", label, download_offset);
             return 0;
         }
 
         if (!sink_write(sink, scratch, bytes_read))
         {
-            sdk_log_error("OTA: Failed to write %s firmware chunk at offset %u", label, download_offset);
+            wm_sdk_log_error("OTA: Failed to write %s firmware chunk at offset %u", label, download_offset);
             return 0;
         }
 
@@ -394,7 +394,7 @@ static int ota_download_stream(UINT32 file_size, const char *label,
         UINT32 progress_pct = (download_offset * 100) / file_size;
         if (progress_pct >= last_logged_pct + 10 || download_offset >= file_size)
         {
-            sdk_log_info("OTA: Downloading %s firmware: %u%% (%u/%u bytes)",
+            wm_sdk_log_info("OTA: Downloading %s firmware: %u%% (%u/%u bytes)",
                      label, progress_pct, download_offset, file_size);
             last_logged_pct = progress_pct;
         }
@@ -406,21 +406,21 @@ static int ota_download_stream(UINT32 file_size, const char *label,
 static int ota_sink_app_package(void *sink, const char *data, UINT32 len)
 {
     (void)sink;
-    return (sdk_app_package_write(data, len) == SDK_RESULT_SUCCESS) ? 1 : 0;
+    return (wm_sdk_app_package_write(data, len) == WM_SDK_RESULT_SUCCESS) ? 1 : 0;
 }
 
 static int ota_sink_file(void *sink, const char *data, UINT32 len)
 {
     UINT32 written = 0;
-    return (sdk_file_write(sink, data, len, &written) == SDK_RESULT_SUCCESS && written == len) ? 1 : 0;
+    return (wm_sdk_file_write(sink, data, len, &written) == WM_SDK_RESULT_SUCCESS && written == len) ? 1 : 0;
 }
 
 static int ota_download_write_simcom(UINT32 file_size, char *scratch, size_t scratch_size)
 {
-    sdk_debug_print("OTA: download_write_simcom entry size=%u", file_size);
+    wm_sdk_debug_print("OTA: download_write_simcom entry size=%u", file_size);
 #ifdef OTA_DOWNLOAD_TEST
     /* Test mode: download to a flash file only, do not touch the app package. */
-    sdk_log_warning("OTA: OTA_DOWNLOAD_TEST active - writing SIMCOM image to %s (no package write)",
+    wm_sdk_log_warning("OTA: OTA_DOWNLOAD_TEST active - writing SIMCOM image to %s (no package write)",
                  OTA_DOWNLOAD_TEST_FILE_PATH);
 
     if (!ota_flash_has_space_for_download(file_size, OTA_DOWNLOAD_TEST_FILE_PATH))
@@ -428,99 +428,99 @@ static int ota_download_write_simcom(UINT32 file_size, char *scratch, size_t scr
         return 0;
     }
 
-    void *test_file = sdk_file_open(OTA_DOWNLOAD_TEST_FILE_PATH, "wb");
+    void *test_file = wm_sdk_file_open(OTA_DOWNLOAD_TEST_FILE_PATH, "wb");
     if (test_file == NULL)
     {
-        sdk_log_error("OTA: failed to open %s for write", OTA_DOWNLOAD_TEST_FILE_PATH);
+        wm_sdk_log_error("OTA: failed to open %s for write", OTA_DOWNLOAD_TEST_FILE_PATH);
         return 0;
     }
 
-    sdk_log_info("OTA: Starting SIMCOM test download (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: Starting SIMCOM test download (%u bytes)", file_size);
 
     if (!ota_download_stream(file_size, "SIMCOM(test)", scratch, scratch_size, ota_sink_file, test_file))
     {
-        sdk_file_close(test_file);
+        wm_sdk_file_close(test_file);
         file_system_delete(OTA_DOWNLOAD_TEST_FILE_PATH);
         return 0;
     }
 
-    if (sdk_file_close(test_file) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_file_close(test_file) != WM_SDK_RESULT_SUCCESS)
     {
-        sdk_log_error("OTA: Failed to close SIMCOM test file");
+        wm_sdk_log_error("OTA: Failed to close SIMCOM test file");
         file_system_delete(OTA_DOWNLOAD_TEST_FILE_PATH);
         return 0;
     }
 
-    sdk_log_info("OTA: SIMCOM test download complete (%u bytes) -> %s",
+    wm_sdk_log_info("OTA: SIMCOM test download complete (%u bytes) -> %s",
                  file_size, OTA_DOWNLOAD_TEST_FILE_PATH);
     return 1;
 #else
-    SdkResult open_ret = sdk_app_package_open("w");
-    if (open_ret != SDK_RESULT_SUCCESS)
+    wm_SdkResult open_ret = wm_sdk_app_package_open("w");
+    if (open_ret != WM_SDK_RESULT_SUCCESS)
     {
-        sdk_debug_print("OTA: failed to open app package for writing (result=%d)", (int)open_ret);
-        sdk_log_error("OTA: sdk_app_package_open failed - check SIMCOM app update API in sdk_simcom_ota.c");
+        wm_sdk_debug_print("OTA: failed to open app package for writing (result=%d)", (int)open_ret);
+        wm_sdk_log_error("OTA: wm_sdk_app_package_open failed - check SIMCOM app update API in sdk_simcom_ota.c");
         return 0;
     }
 
-    sdk_log_info("OTA: Starting SIMCOM firmware download (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: Starting SIMCOM firmware download (%u bytes)", file_size);
 
     if (!ota_download_stream(file_size, "SIMCOM", scratch, scratch_size, ota_sink_app_package, NULL))
     {
-        sdk_log_error("OTA: SIMCOM firmware download/write failed");
-        sdk_app_package_close();
+        wm_sdk_log_error("OTA: SIMCOM firmware download/write failed");
+        wm_sdk_app_package_close();
         return 0;
     }
 
-    if (sdk_app_package_close() != SDK_RESULT_SUCCESS)
+    if (wm_sdk_app_package_close() != WM_SDK_RESULT_SUCCESS)
     {
-        sdk_log_error("OTA: Failed to close SIMCOM firmware package");
+        wm_sdk_log_error("OTA: Failed to close SIMCOM firmware package");
         return 0;
     }
 
-    sdk_log_info("OTA: SIMCOM firmware download complete (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: SIMCOM firmware download complete (%u bytes)", file_size);
     return 1;
 #endif /* OTA_DOWNLOAD_TEST */
 }
 
 static int ota_download_write_st(UINT32 file_size, char *scratch, size_t scratch_size, UINT32 *out_size)
 {
-    sdk_debug_print("OTA: download_write_st entry size=%u", file_size);
+    wm_sdk_debug_print("OTA: download_write_st entry size=%u", file_size);
     char check_buffer[1] = {0};
     UINT32 read_len = 0;
     if (file_system_read_file(ST_FIRMWARE_FILE_PATH, check_buffer, sizeof(check_buffer), &read_len) == RESULT_SUCCESS)
     {
         if (file_system_delete(ST_FIRMWARE_FILE_PATH) != RESULT_SUCCESS)
         {
-            sdk_debug_print("OTA: failed to delete existing ST file");
+            wm_sdk_debug_print("OTA: failed to delete existing ST file");
             return 0;
         }
     }
 
-    void* st_file = sdk_file_open(ST_FIRMWARE_FILE_PATH, "wb");
+    void* st_file = wm_sdk_file_open(ST_FIRMWARE_FILE_PATH, "wb");
     if (st_file == NULL)
     {
-        sdk_debug_print("OTA: failed to open ST file for write");
+        wm_sdk_debug_print("OTA: failed to open ST file for write");
         return 0;
     }
 
-    sdk_log_info("OTA: Starting ST firmware download (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: Starting ST firmware download (%u bytes)", file_size);
 
     if (!ota_download_stream(file_size, "ST", scratch, scratch_size, ota_sink_file, st_file))
     {
-        sdk_file_close(st_file);
+        wm_sdk_file_close(st_file);
         file_system_delete(ST_FIRMWARE_FILE_PATH);
         return 0;
     }
 
-    if (sdk_file_close(st_file) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_file_close(st_file) != WM_SDK_RESULT_SUCCESS)
     {
-        sdk_log_error("OTA: Failed to close ST firmware file");
+        wm_sdk_log_error("OTA: Failed to close ST firmware file");
         file_system_delete(ST_FIRMWARE_FILE_PATH);
         return 0;
     }
 
-    sdk_log_info("OTA: ST firmware download complete (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: ST firmware download complete (%u bytes)", file_size);
 
     if (out_size) *out_size = file_size;
     return 1;
@@ -547,7 +547,7 @@ int ota_download_and_write_firmware(int upgrade_type, const char *url,
     }
 
     /* Disable FBF before download (required by SIMCOM API) */
-    sdk_ota_fbf_disable();
+    wm_sdk_ota_fbf_disable();
 
     void *msgq = NULL;
     if (!ota_download_init_https(&msgq))
@@ -555,7 +555,7 @@ int ota_download_and_write_firmware(int upgrade_type, const char *url,
         return 0;
     }
 
-    sdk_log_info("OTA: download URL: %s", url);
+    wm_sdk_log_info("OTA: download URL: %s", url);
     if (sdk_https_download_set_params(url) != SDK_HTTPS_SUCCESS)
     {
         SDK_DEBUG_PRINT("Failed to set download parameters");
@@ -566,12 +566,12 @@ int ota_download_and_write_firmware(int upgrade_type, const char *url,
     UINT32 file_size = 0;
     if (!sdk_https_download_get_file_size(&file_size) || file_size == 0)
     {
-        sdk_log_error("OTA: GET request returned zero/invalid file size");
+        wm_sdk_log_error("OTA: GET request returned zero/invalid file size");
         ota_download_cleanup_https(msgq);
         return 0;
     }
 
-    sdk_log_info("OTA: Firmware file size: %u bytes, type: %s",
+    wm_sdk_log_info("OTA: Firmware file size: %u bytes, type: %s",
              file_size, (upgrade_type == OTA_UPGRADE_SIMCOM) ? "SIMCOM" : "ST");
 
     if (upgrade_type == OTA_UPGRADE_ST)
@@ -583,7 +583,7 @@ int ota_download_and_write_firmware(int upgrade_type, const char *url,
         }
     }
 
-    sdk_debug_print("OTA: starting download write type=%d size=%u", upgrade_type, file_size);
+    wm_sdk_debug_print("OTA: starting download write type=%d size=%u", upgrade_type, file_size);
     int result = (upgrade_type == OTA_UPGRADE_ST)
                  ? ota_download_write_st(file_size, scratch, scratch_size, out_size)
                  : ota_download_write_simcom(file_size, scratch, scratch_size);
@@ -591,9 +591,9 @@ int ota_download_and_write_firmware(int upgrade_type, const char *url,
     ota_download_cleanup_https(msgq);
 
     if (result)
-        sdk_log_info("OTA: Firmware download and write completed successfully");
+        wm_sdk_log_info("OTA: Firmware download and write completed successfully");
     else
-        sdk_log_error("OTA: Firmware download and write failed");
+        wm_sdk_log_error("OTA: Firmware download and write failed");
 
     return result;
 }
@@ -608,44 +608,44 @@ int ota_download_peripheral_file(const char *url, const char *dest_path,
     if (!ota_download_init_https(&msgq))
         return 0;
 
-    sdk_ota_fbf_disable();
+    wm_sdk_ota_fbf_disable();
 
     if (sdk_https_download_set_params(url) != SDK_HTTPS_SUCCESS) {
-        sdk_log_error("OTA: peripheral set_params failed");
+        wm_sdk_log_error("OTA: peripheral set_params failed");
         ota_download_cleanup_https(msgq);
         return 0;
     }
 
     UINT32 file_size = 0;
     if (!sdk_https_download_get_file_size(&file_size) || file_size == 0) {
-        sdk_log_error("OTA: peripheral zero file size");
+        wm_sdk_log_error("OTA: peripheral zero file size");
         ota_download_cleanup_https(msgq);
         return 0;
     }
 
     if (!ota_flash_has_space_for_download(file_size, dest_path)) {
-        sdk_log_error("OTA: insufficient flash for %u byte peripheral image", file_size);
+        wm_sdk_log_error("OTA: insufficient flash for %u byte peripheral image", file_size);
         ota_download_cleanup_https(msgq);
         return 0;
     }
 
-    void *fp = sdk_file_open(dest_path, "wb");
+    void *fp = wm_sdk_file_open(dest_path, "wb");
     if (!fp) {
-        sdk_log_error("OTA: cannot open %s for write", dest_path);
+        wm_sdk_log_error("OTA: cannot open %s for write", dest_path);
         ota_download_cleanup_https(msgq);
         return 0;
     }
 
-    sdk_log_info("OTA: downloading peripheral firmware (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: downloading peripheral firmware (%u bytes)", file_size);
     int ok = ota_download_stream(file_size, "peripheral", scratch, scratch_size, ota_sink_file, fp);
 
-    sdk_file_close(fp);
+    wm_sdk_file_close(fp);
     ota_download_cleanup_https(msgq);
 
     if (!ok) {
         file_system_delete(dest_path);
         return 0;
     }
-    sdk_log_info("OTA: peripheral download complete (%u bytes)", file_size);
+    wm_sdk_log_info("OTA: peripheral download complete (%u bytes)", file_size);
     return 1;
 }

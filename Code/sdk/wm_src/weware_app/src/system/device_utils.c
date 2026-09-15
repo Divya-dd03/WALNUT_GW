@@ -3,16 +3,16 @@
   * @file    device_utils.c
   * @author  WheelsEye
   * @brief   Device utility module for the weware application.
-  *          Reads and caches the device IMEI via sdk_device_get_imei(),
+  *          Reads and caches the device IMEI via wm_sdk_device_get_imei(),
   *          caches the ST co-processor firmware version and tracks
   *          peripheral device info (ready state + fw/hw versions).
   ******************************************************************************
   */
 
 // sdk
-#include "sdk_os.h"
-#include "sdk_device.h"
-#include "sdk_log.h"
+#include "wm_sdk_os.h"
+#include "wm_sdk_device.h"
+#include "wm_sdk_log.h"
 
 // app
 #include "device_utils.h"
@@ -67,49 +67,49 @@ static void imei_store(const char *imei)
  * Public API
  *--------------------------------------------------------------*/
 
-SdkResult device_utils_init(void)
+wm_SdkResult device_utils_init(void)
 {
     if (g_imei_initialized) {
-        sdk_log_warning("Device utils already initialized: %s\r\n", g_global_imei);
-        return SDK_RESULT_SUCCESS;
+        wm_sdk_log_warning("Device utils already initialized: %s\r\n", g_global_imei);
+        return WM_SDK_RESULT_SUCCESS;
     }
 
-    sdk_log_info("Initializing device utilities (IMEI)...\r\n");
-    sdk_task_sleep(IMEI_RETRY_DELAY_MS);
+    wm_sdk_log_info("Initializing device utilities (IMEI)...\r\n");
+    wm_sdk_task_sleep(IMEI_RETRY_DELAY_MS);
 
     char imei_string[DEVICE_UTILS_IMEI_BUFFER_SIZE] = {0};
 
     for (UINT32 attempt = 0; attempt < IMEI_MAX_RETRIES; attempt++) {
-        SdkResult result = sdk_device_get_imei(imei_string, sizeof(imei_string));
+        wm_SdkResult result = wm_sdk_device_get_imei(imei_string, sizeof(imei_string));
 
-        if (result == SDK_RESULT_NOT_SUPPORTED) {
-            sdk_log_error("IMEI retrieval not supported\r\n");
+        if (result == WM_SDK_RESULT_NOT_SUPPORTED) {
+            wm_sdk_log_error("IMEI retrieval not supported\r\n");
             imei_reset();
-            return SDK_RESULT_NOT_SUPPORTED;
+            return WM_SDK_RESULT_NOT_SUPPORTED;
         }
 
-        if (result == SDK_RESULT_SUCCESS &&
+        if (result == WM_SDK_RESULT_SUCCESS &&
             strlen(imei_string) >= DEVICE_UTILS_IMEI_LENGTH) {
             // imei_store(imei_string);
             imei_store("860056081830565");
-            sdk_log_info("IMEI initialized: %s (attempt %u)\r\n",
+            wm_sdk_log_info("IMEI initialized: %s (attempt %u)\r\n",
                          g_global_imei, (unsigned)(attempt + 1));
-            return SDK_RESULT_SUCCESS;
+            return WM_SDK_RESULT_SUCCESS;
         }
 
-        sdk_log_warning("IMEI attempt %u failed (result=%d, len=%u, value='%s')\r\n",
+        wm_sdk_log_warning("IMEI attempt %u failed (result=%d, len=%u, value='%s')\r\n",
                         (unsigned)(attempt + 1), (int)result,
                         (unsigned)strlen(imei_string), imei_string);
 
         if (attempt < IMEI_MAX_RETRIES - 1) {
-            sdk_task_sleep(IMEI_RETRY_DELAY_MS);
+            wm_sdk_task_sleep(IMEI_RETRY_DELAY_MS);
             memset(imei_string, 0, sizeof(imei_string));
         }
     }
 
-    sdk_log_error("Failed to initialize IMEI after %u attempts\r\n",
+    wm_sdk_log_error("Failed to initialize IMEI after %u attempts\r\n",
                   (unsigned)IMEI_MAX_RETRIES);
-    return SDK_RESULT_ERROR;
+    return WM_SDK_RESULT_ERROR;
 }
 
 int device_utils_get_imei(char *imei_buffer)
@@ -122,17 +122,17 @@ int device_utils_get_imei(char *imei_buffer)
     return 1;
 }
 
-SdkResult device_utils_set_imei(const char *imei)
+wm_SdkResult device_utils_set_imei(const char *imei)
 {
     if (!imei || strlen(imei) < DEVICE_UTILS_IMEI_LENGTH ||
         strlen(imei) >= DEVICE_UTILS_IMEI_BUFFER_SIZE) {
-        sdk_log_error("Invalid IMEI string provided\r\n");
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("Invalid IMEI string provided\r\n");
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     imei_store(imei);
-    sdk_log_info("IMEI manually set to: %s\r\n", g_global_imei);
-    return SDK_RESULT_SUCCESS;
+    wm_sdk_log_info("IMEI manually set to: %s\r\n", g_global_imei);
+    return WM_SDK_RESULT_SUCCESS;
 }
 
 int device_utils_is_imei_initialized(void)
@@ -140,20 +140,20 @@ int device_utils_is_imei_initialized(void)
     return g_imei_initialized ? 1 : 0;
 }
 
-SdkResult device_utils_refresh_imei(void)
+wm_SdkResult device_utils_refresh_imei(void)
 {
-    sdk_log_info("Refreshing IMEI...\r\n");
+    wm_sdk_log_info("Refreshing IMEI...\r\n");
     imei_reset();
     return device_utils_init();
 }
 
-SdkResult device_utils_deinit(void)
+wm_SdkResult device_utils_deinit(void)
 {
-    sdk_log_info("Deinitializing device utilities\r\n");
+    wm_sdk_log_info("Deinitializing device utilities\r\n");
     imei_reset();
     memset(g_st_firmware_version, 0, sizeof(g_st_firmware_version));
     g_st_fw_version_initialized = false;
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
 int device_utils_get_st_firmware_version(char *version_buffer)
@@ -166,21 +166,21 @@ int device_utils_get_st_firmware_version(char *version_buffer)
     return 1;
 }
 
-SdkResult device_utils_set_st_firmware_version(const char *version)
+wm_SdkResult device_utils_set_st_firmware_version(const char *version)
 {
     size_t len = version ? strlen(version) : 0;
 
     if (len == 0 || len >= DEVICE_UTILS_ST_FW_VERSION_BUFFER_SIZE) {
-        sdk_log_error("Invalid ST firmware version string (len=%u)\r\n",
+        wm_sdk_log_error("Invalid ST firmware version string (len=%u)\r\n",
                       (unsigned)len);
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     du_strncpy_safe(g_st_firmware_version, version,
                     sizeof(g_st_firmware_version));
     g_st_fw_version_initialized = true;
-    sdk_log_info("ST firmware version set to: %s\r\n", g_st_firmware_version);
-    return SDK_RESULT_SUCCESS;
+    wm_sdk_log_info("ST firmware version set to: %s\r\n", g_st_firmware_version);
+    return WM_SDK_RESULT_SUCCESS;
 }
 
 int device_utils_is_st_firmware_version_initialized(void)
@@ -195,7 +195,7 @@ void device_utils_invalidate_st_firmware_version(void)
      * and the stale cache would otherwise trigger a repeat OTA. */
     g_st_fw_version_initialized = false;
     g_st_firmware_version[0] = '\0';
-    sdk_log_info("ST firmware version invalidated (will be re-queried)\r\n");
+    wm_sdk_log_info("ST firmware version invalidated (will be re-queried)\r\n");
 }
 
 /*---------------------------------------------------------------
@@ -207,10 +207,10 @@ static PeriDeviceInfo *g_peri_devices = NULL; /* heap-allocated on first use to 
 void device_utils_peri_reset_all(void)
 {
     if (!g_peri_devices) {
-        g_peri_devices = (PeriDeviceInfo *)sdk_memory_alloc(
+        g_peri_devices = (PeriDeviceInfo *)wm_sdk_memory_alloc(
             PERI_DEVICE_MAX * sizeof(PeriDeviceInfo));
         if (!g_peri_devices) {
-            sdk_log_error("peri_reset_all: alloc failed\r\n");
+            wm_sdk_log_error("peri_reset_all: alloc failed\r\n");
             return;
         }
     }
@@ -227,44 +227,44 @@ static PeriDeviceInfo *peri_slot(UINT8 device_id)
     return &g_peri_devices[device_id - 1];
 }
 
-SdkResult device_utils_peri_set_ready(UINT8 device_id)
+wm_SdkResult device_utils_peri_set_ready(UINT8 device_id)
 {
     PeriDeviceInfo *slot = peri_slot(device_id);
     if (!slot) {
-        sdk_log_error("peri_set_ready: invalid device_id %u\r\n",
+        wm_sdk_log_error("peri_set_ready: invalid device_id %u\r\n",
                       (unsigned)device_id);
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
     slot->device_id = device_id;
     slot->is_ready  = true;
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult device_utils_peri_set_version(UINT8 device_id, UINT16 fw_version,
+wm_SdkResult device_utils_peri_set_version(UINT8 device_id, UINT16 fw_version,
                                         UINT16 hw_version)
 {
     PeriDeviceInfo *slot = peri_slot(device_id);
     if (!slot) {
-        sdk_log_error("peri_set_version: invalid device_id %u\r\n",
+        wm_sdk_log_error("peri_set_version: invalid device_id %u\r\n",
                       (unsigned)device_id);
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
     slot->fw_version    = fw_version;
     slot->hw_version    = hw_version;
     slot->version_valid = true;
-    sdk_log_info("Peri[%u] version set: fw=%u hw=%u\r\n",
+    wm_sdk_log_info("Peri[%u] version set: fw=%u hw=%u\r\n",
                  (unsigned)device_id, (unsigned)fw_version,
                  (unsigned)hw_version);
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult device_utils_peri_get_info(UINT8 device_id, PeriDeviceInfo *out)
+wm_SdkResult device_utils_peri_get_info(UINT8 device_id, PeriDeviceInfo *out)
 {
     PeriDeviceInfo *slot = peri_slot(device_id);
     if (!slot || !out)
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
     *out = *slot;
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
 int device_utils_peri_is_ready(UINT8 device_id)

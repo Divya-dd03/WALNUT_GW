@@ -2,26 +2,26 @@
  * @file sdk_walnut_https.c
  * @brief WALNUT HTTPS functionality - full request and chunked download.
  *
- * Implements the HTTPS functionality API using the kernel sdk_https_* client
+ * Implements the HTTPS functionality API using the kernel wm_sdk_https_* client
  * (lib_wmsrc_B.a) and native APIs where needed (e.g. CONTENT type override).
  *
  * Behaviour vs the SIMCOM implementation (sdk_simcom_https.c):
  * - request(): same shape as SIMCOM. SIMCOM: sAPI_HttpAction() then block on
  *   the URC message queue for the action result, then sAPI_HttpRead() and
  *   block again for the read URC. Walnut: the client is initialised in
- *   SDK_HTTPS_MODE_ASYNC with an adapter-owned queue; sdk_https_action()
+ *   WM_SDK_HTTPS_MODE_ASYNC with an adapter-owned queue; wm_sdk_https_action()
  *   returns immediately (the request - DNS/TLS/exchange - runs on the kernel
  *   HTTPS worker task, which carries the ~16 KB TLS stack), and the adapter
- *   blocks on sdk_msgq_recv() for the SdkHttpsEvent, exactly where SIMCOM
- *   waits for its action URC. The body is then drained with sdk_https_read()
+ *   blocks on wm_sdk_msgq_recv() for the wm_SdkHttpsEvent, exactly where SIMCOM
+ *   waits for its action URC. The body is then drained with wm_sdk_https_read()
  *   (needs ~8 KB of caller stack) into the same static 4 KB response buffer.
  *   As in CG, only a 2xx status counts as success; the SIMCOM
- *   sdk_https_response_t URC payload maps to SdkHttpsEvent.status/http_code.
+ *   sdk_https_response_t URC payload maps to wm_SdkHttpsEvent.status/http_code.
  * - download_*(): CG return conventions (1 ok / 0 fail for
  *   get_file_size/read_chunk, 0 ok for configure_ssl) over the kernel's
  *   0 ok / <0 fail ranged-download calls on the reserved
- *   SDK_HTTPS_DOWNLOAD_INDEX session. These kernel helpers are SYNCHRONOUS
- *   regardless of the init mode (sdk_https.h) and need ~16 KB of caller
+ *   WM_SDK_HTTPS_DOWNLOAD_INDEX session. These kernel helpers are SYNCHRONOUS
+ *   regardless of the init mode (wm_sdk_https.h) and need ~16 KB of caller
  *   stack; there is no async variant and no access to the Content-Length /
  *   Content-Range headers that would allow an async ranged download to be
  *   built on the general sessions. The size query is the only source of the
@@ -34,7 +34,7 @@
  *   build. Wire a stored root CA in here later to close that gap.
  * - SIMCOM-only concepts accepted and ignored: the TX channel (USB/serial)
  *   and the caller's URC message queue (the kernel needs a queue created
- *   with msg_size == sizeof(SdkHttpsEvent), so the adapter owns its own,
+ *   with msg_size == sizeof(wm_SdkHttpsEvent), so the adapter owns its own,
  *   as SIMCOM's request path owns g_https_urc_msgq). download_init(channel,
  *   msgq) therefore succeeds on the first call and the OTA engine's
  *   USB->serial fallback never runs.
@@ -43,67 +43,64 @@
 #include "wm_global.h"
 #include "ota/sdk_functionality_https.h"
 #include "ota/sdk_walnut_https.h"
-#include "sdk_os.h"
-#include "sdk_log.h"
+#include "wm_sdk_os.h"
+#include "wm_sdk_log.h"
 #include <string.h>
 
-/* This file implements the walnut backend and talks to the kernel
- * sdk_https_* API under its real names - drop the CG compat remap
- * (see sdk_functionality_https_compat.h). */
-#undef sdk_https_get_response
-#undef sdk_https_get_response_len
-#undef sdk_https_download_configure_ssl
-#undef sdk_https_download_get_file_size
-#undef sdk_https_download_read_chunk
+/* This file implements the walnut backend and talks to the kernel under its
+ * own wm_sdk_https_* names, which no longer collide with the CG names: the
+ * CG spellings (sdk_https_get_response / _get_response_len and the download
+ * trio) stay remapped to the sdk_platform_https_* dispatchers by
+ * sdk_functionality_https_compat.h, so no #undef is needed here. */
 
 #define HTTPS_RESP_BUF_SIZE 4096
 
 /* Max wait for the async completion event. SIMCOM waits 30 s for the action
  * URC; the kernel's per-operation transport timeout is 30 s
- * (SDK_HTTPS_DEFAULT_TIMEOUT) and a request has several operations (DNS,
+ * (WM_SDK_HTTPS_DEFAULT_TIMEOUT) and a request has several operations (DNS,
  * connect, TLS, send, receive), so allow for a couple of them. */
 #define HTTPS_EVENT_WAIT_MS         60000U
 #define HTTPS_EVENT_QUEUE_DEPTH     4U
 
 /* General-purpose session used by request(); the download path uses the
- * reserved SDK_HTTPS_DOWNLOAD_INDEX. */
+ * reserved WM_SDK_HTTPS_DOWNLOAD_INDEX. */
 #define HTTPS_REQUEST_SESSION       0U
 
-static void *g_https_evt_msgq = NULL;    /* SdkHttpsEvent completion queue */
+static void *g_https_evt_msgq = NULL;    /* wm_SdkHttpsEvent completion queue */
 static char g_https_resp_buf[HTTPS_RESP_BUF_SIZE];
 static UINT32 g_https_resp_len = 0;
 static BOOL g_https_initialized = FALSE;
 
 static BOOL g_download_initialized = FALSE;
 
-/* Low-level HTTPS functionality impl: sdk_https_init / _configure_ssl /
+/* Low-level HTTPS functionality impl: wm_sdk_https_init / _configure_ssl /
  * _set_params / _set_data / _action / _read / _terminate are the kernel
  * wrappers themselves (CG-compatible contract) - no per-call *_impl
  * wrappers are needed; the ops table points at them directly. */
 
-static SdkResult https_handle_urc_impl(void* msgq, void (*callback)(void*))
+static wm_SdkResult https_handle_urc_impl(void* msgq, void (*callback)(void*))
 {
-    /* No URC pump on walnut: the kernel posts the SdkHttpsEvent to the
+    /* No URC pump on walnut: the kernel posts the wm_SdkHttpsEvent to the
      * adapter's queue itself and request() consumes it inline. */
     (void)msgq;
     (void)callback;
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
 /* Lazily create the completion queue and put the client in async mode.
- * sdk_https_init is idempotent; it rejects only a request already in flight. */
+ * wm_sdk_https_init is idempotent; it rejects only a request already in flight. */
 static BOOL https_client_init_async(void)
 {
     if (!g_https_evt_msgq) {
-        g_https_evt_msgq = sdk_msgq_create("https_evt_msgq", sizeof(SdkHttpsEvent),
+        g_https_evt_msgq = wm_sdk_msgq_create("https_evt_msgq", sizeof(wm_SdkHttpsEvent),
                                            HTTPS_EVENT_QUEUE_DEPTH, 0);
         if (!g_https_evt_msgq) {
-            sdk_log_error("HTTPS: event queue create failed");
+            wm_sdk_log_error("HTTPS: event queue create failed");
             return FALSE;
         }
     }
-    if (sdk_https_init(SDK_HTTPS_MODE_ASYNC, g_https_evt_msgq) != SDK_RESULT_SUCCESS) {
-        sdk_log_error("HTTPS: init failed (request in flight?)");
+    if (wm_sdk_https_init(WM_SDK_HTTPS_MODE_ASYNC, g_https_evt_msgq) != WM_SDK_RESULT_SUCCESS) {
+        wm_sdk_log_error("HTTPS: init failed (request in flight?)");
         return FALSE;
     }
     return TRUE;
@@ -117,37 +114,37 @@ static BOOL https_client_init_async(void)
  */
 static int https_wait_action_event(UINT32 session)
 {
-    SdkHttpsEvent ev;
+    wm_SdkHttpsEvent ev;
     UINT32 waited_ms = 0;
 
     while (waited_ms < HTTPS_EVENT_WAIT_MS) {
-        UINT32 t0 = sdk_get_ticks();
+        UINT32 t0 = wm_sdk_get_ticks();
         memset(&ev, 0, sizeof(ev));
-        if (sdk_msgq_recv(g_https_evt_msgq, &ev, HTTPS_EVENT_WAIT_MS - waited_ms)
-                != SDK_RESULT_SUCCESS) {
-            sdk_log_error("HTTPS request: no completion event within %lu ms",
+        if (wm_sdk_msgq_recv(g_https_evt_msgq, &ev, HTTPS_EVENT_WAIT_MS - waited_ms)
+                != WM_SDK_RESULT_SUCCESS) {
+            wm_sdk_log_error("HTTPS request: no completion event within %lu ms",
                           (unsigned long)HTTPS_EVENT_WAIT_MS);
             return 0;
         }
-        if (ev.type == SDK_HTTPS_EVT_ACTION_DONE && ev.ssl_index == session)
+        if (ev.type == WM_SDK_HTTPS_EVT_ACTION_DONE && ev.ssl_index == session)
             break;
-        sdk_log_warning("HTTPS request: ignoring event type %u for session %u",
+        wm_sdk_log_warning("HTTPS request: ignoring event type %u for session %u",
                         (unsigned)ev.type, (unsigned)ev.ssl_index);
-        waited_ms += sdk_get_ticks() - t0;
+        waited_ms += wm_sdk_get_ticks() - t0;
     }
     if (waited_ms >= HTTPS_EVENT_WAIT_MS)
         return 0;
 
-    if (ev.status != SDK_RESULT_SUCCESS) {
-        sdk_log_error("HTTPS request: action failed (rc=%ld err=%ld)",
-                      (long)ev.status, (long)sdk_https_get_last_error(session));
+    if (ev.status != WM_SDK_RESULT_SUCCESS) {
+        wm_sdk_log_error("HTTPS request: action failed (rc=%ld err=%ld)",
+                      (long)ev.status, (long)wm_sdk_https_get_last_error(session));
         return 0;
     }
     /* CG counts only a 2xx as success (SIMCOM checks the action URC's
      * status code); the kernel reports the exchange and the verdict
      * separately. */
     if (ev.http_code < 200 || ev.http_code >= 300) {
-        sdk_log_error("HTTPS request: status %ld", (long)ev.http_code);
+        wm_sdk_log_error("HTTPS request: status %ld", (long)ev.http_code);
         return 0;
     }
     return 1;
@@ -155,9 +152,9 @@ static int https_wait_action_event(UINT32 session)
 
 static void https_request_abort(UINT32 session)
 {
-    /* Terminate rejects a request in flight (SDK_RESULT_BUSY); in that case
+    /* Terminate rejects a request in flight (WM_SDK_RESULT_BUSY); in that case
      * the session is released when the event arrives on the next request. */
-    sdk_https_terminate(session);
+    wm_sdk_https_terminate(session);
     g_https_initialized = FALSE;
 }
 
@@ -172,9 +169,9 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
     if (!url || strlen(url) == 0) return 0;
     if (method == SDK_HTTPS_METHOD_POST && (!payload || strlen(payload) == 0)) return 0;
     if (method == SDK_HTTPS_METHOD_GET)
-        action = SDK_HTTPS_ACTION_GET;
+        action = WM_SDK_HTTPS_ACTION_GET;
     else if (method == SDK_HTTPS_METHOD_POST)
-        action = SDK_HTTPS_ACTION_POST;
+        action = WM_SDK_HTTPS_ACTION_POST;
     else
         return 0;
     if (!content_type) content_type = (method == SDK_HTTPS_METHOD_POST) ? "application/json" : "*/*";
@@ -185,25 +182,25 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
 
     /* TLS without server verification - CG/SIMCOM behaviour (sslversion +
      * SNI only, no trust anchor). */
-    if (sdk_https_configure_ssl(session, NULL, NULL, NULL) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_https_configure_ssl(session, NULL, NULL, NULL) != WM_SDK_RESULT_SUCCESS) {
         https_request_abort(session);
         return 0;
     }
 
-    if (sdk_https_set_params(session, url, 0) != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_https_set_params(session, url, 0) != WM_SDK_RESULT_SUCCESS) {
         https_request_abort(session);
         return 0;
     }
 
     /* SIMCOM sends ACCEPT */
-    if (sdk_https_set_header(session, "Accept: */*") != SDK_RESULT_SUCCESS) {
+    if (wm_sdk_https_set_header(session, "Accept: */*") != WM_SDK_RESULT_SUCCESS) {
         https_request_abort(session);
         return 0;
     }
 
     /* WALNUT-specific: override CONTENT type for POST */
     if (method == SDK_HTTPS_METHOD_POST && content_type) {
-        if (sdk_https_set_content_type(session, content_type) != SDK_RESULT_SUCCESS) {
+        if (wm_sdk_https_set_content_type(session, content_type) != WM_SDK_RESULT_SUCCESS) {
             /* continue anyway */
         }
     }
@@ -212,7 +209,7 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
         UINT32 payload_len = (UINT32)strlen(payload);
         /* Not copied by the kernel: the caller's buffer must stay valid until
          * the completion event - guaranteed, since this call blocks on it. */
-        if (sdk_https_set_data(session, payload, payload_len) != SDK_RESULT_SUCCESS) {
+        if (wm_sdk_https_set_data(session, payload, payload_len) != WM_SDK_RESULT_SUCCESS) {
             https_request_abort(session);
             return 0;
         }
@@ -222,9 +219,9 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
     g_https_resp_len = 0;
 
     /* Async: returns as soon as the request is queued on the kernel worker. */
-    if (sdk_https_action(session, action) != SDK_RESULT_SUCCESS) {
-        sdk_log_error("HTTPS request: action not accepted (err=%ld)",
-                      (long)sdk_https_get_last_error(session));
+    if (wm_sdk_https_action(session, action) != WM_SDK_RESULT_SUCCESS) {
+        wm_sdk_log_error("HTTPS request: action not accepted (err=%ld)",
+                      (long)wm_sdk_https_get_last_error(session));
         https_request_abort(session);
         return 0;
     }
@@ -239,9 +236,9 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
      * SIMCOM, anything past the buffer is dropped. */
     while (used < (UINT32)sizeof(g_https_resp_buf) - 1) {
         UINT32 n = 0;
-        if (sdk_https_read(session, g_https_resp_buf + used,
+        if (wm_sdk_https_read(session, g_https_resp_buf + used,
                            (UINT32)sizeof(g_https_resp_buf) - 1 - used,
-                           &n) != SDK_RESULT_SUCCESS) {
+                           &n) != WM_SDK_RESULT_SUCCESS) {
             https_request_abort(session);
             g_https_resp_len = 0;
             return 0;
@@ -262,7 +259,7 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
         *resp_len = g_https_resp_len;
     }
 
-    sdk_https_terminate(session);
+    wm_sdk_https_terminate(session);
     g_https_initialized = FALSE;
     return 1;
 }
@@ -298,8 +295,8 @@ static int sdk_walnut_https_download_configure_ssl_impl(void)
     if (!g_download_initialized)
         return -1;
     /* No CA: encrypted, server unauthenticated - see the file header. */
-    return (sdk_https_configure_ssl(SDK_HTTPS_DOWNLOAD_INDEX, NULL, NULL, NULL)
-            == SDK_RESULT_SUCCESS) ? 0 : -1;
+    return (wm_sdk_https_configure_ssl(WM_SDK_HTTPS_DOWNLOAD_INDEX, NULL, NULL, NULL)
+            == WM_SDK_RESULT_SUCCESS) ? 0 : -1;
 }
 
 /* Download URL, kept so every ranged chunk can re-arm the session.
@@ -311,19 +308,19 @@ static int sdk_walnut_https_download_configure_ssl_impl(void)
  * it re-issues a request on the already-configured session / reused
  * connection. Work around it by re-pointing the session at the URL and forcing
  * "Connection: close" before every chunk, so each range is a fresh request. */
-static char g_download_url[SDK_HTTPS_URL_MAX] = {0};
+static char g_download_url[WM_SDK_HTTPS_URL_MAX] = {0};
 
 static BOOL https_download_rearm(void)
 {
     if (g_download_url[0] == '\0')
         return FALSE;
-    if (sdk_https_set_params(SDK_HTTPS_DOWNLOAD_INDEX, g_download_url, 0) != SDK_RESULT_SUCCESS) {
-        sdk_log_error("HTTPS download: re-arm set_params failed (err=%ld)",
-                      (long)sdk_https_get_last_error(SDK_HTTPS_DOWNLOAD_INDEX));
+    if (wm_sdk_https_set_params(WM_SDK_HTTPS_DOWNLOAD_INDEX, g_download_url, 0) != WM_SDK_RESULT_SUCCESS) {
+        wm_sdk_log_error("HTTPS download: re-arm set_params failed (err=%ld)",
+                      (long)wm_sdk_https_get_last_error(WM_SDK_HTTPS_DOWNLOAD_INDEX));
         return FALSE;
     }
     /* Not fatal if the download session ignores custom headers. */
-    (void)sdk_https_set_header(SDK_HTTPS_DOWNLOAD_INDEX, "Connection: close");
+    (void)wm_sdk_https_set_header(WM_SDK_HTTPS_DOWNLOAD_INDEX, "Connection: close");
     return TRUE;
 }
 
@@ -331,7 +328,7 @@ static sdk_https_returncode_t sdk_walnut_https_download_set_params_impl(const ch
 {
     if (!url || strlen(url) == 0) return SDK_HTTPS_INVALID_PARAMETER;
     if (strlen(url) >= sizeof(g_download_url)) {
-        sdk_log_error("HTTPS download: URL too long (%u >= %u)",
+        wm_sdk_log_error("HTTPS download: URL too long (%u >= %u)",
                       (unsigned)strlen(url), (unsigned)sizeof(g_download_url));
         return SDK_HTTPS_INVALID_PARAMETER;
     }
@@ -346,9 +343,9 @@ static int sdk_walnut_https_download_get_file_size_impl(UINT32 *file_size)
     /* Kernel: 0 ok / <0 fail -> CG: 1 ok / 0 fail. A size of 0 is a
      * failure in CG (the server cannot serve ranges either). Synchronous
      * (blocks the caller for one HEAD/ranged exchange). */
-    if (sdk_https_download_get_file_size(file_size) != 0) {
-        sdk_log_error("HTTPS download: size query failed (err=%ld)",
-                      (long)sdk_https_get_last_error(SDK_HTTPS_DOWNLOAD_INDEX));
+    if (wm_sdk_https_download_get_file_size(file_size) != 0) {
+        wm_sdk_log_error("HTTPS download: size query failed (err=%ld)",
+                      (long)wm_sdk_https_get_last_error(WM_SDK_HTTPS_DOWNLOAD_INDEX));
         return 0;
     }
     if (*file_size == 0) return 0;
@@ -370,15 +367,15 @@ static int sdk_walnut_https_download_read_chunk_impl(UINT32 offset, UINT32 size,
             *bytes_read = 0;
             return 0;
         }
-        if (sdk_https_download_read_chunk(offset, size, buffer, bytes_read) == 0) {
+        if (wm_sdk_https_download_read_chunk(offset, size, buffer, bytes_read) == 0) {
             if (attempt > 0)
-                sdk_log_warning("HTTPS download: chunk at %lu ok on retry", (unsigned long)offset);
+                wm_sdk_log_warning("HTTPS download: chunk at %lu ok on retry", (unsigned long)offset);
             return 1;
         }
-        sdk_log_error("HTTPS download: chunk at %lu failed (attempt %d, http=%ld err=%ld)",
+        wm_sdk_log_error("HTTPS download: chunk at %lu failed (attempt %d, http=%ld err=%ld)",
                       (unsigned long)offset, attempt + 1,
-                      (long)sdk_https_get_status_code(SDK_HTTPS_DOWNLOAD_INDEX),
-                      (long)sdk_https_get_last_error(SDK_HTTPS_DOWNLOAD_INDEX));
+                      (long)wm_sdk_https_get_status_code(WM_SDK_HTTPS_DOWNLOAD_INDEX),
+                      (long)wm_sdk_https_get_last_error(WM_SDK_HTTPS_DOWNLOAD_INDEX));
     }
     *bytes_read = 0;
     return 0;
@@ -387,10 +384,10 @@ static int sdk_walnut_https_download_read_chunk_impl(UINT32 offset, UINT32 size,
 static sdk_https_returncode_t sdk_walnut_https_download_terminate_impl(void)
 {
     if (!g_download_initialized) return SDK_HTTPS_FAIL;
-    SdkResult ret = sdk_https_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+    wm_SdkResult ret = wm_sdk_https_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
     g_download_initialized = FALSE;
     g_download_url[0] = '\0';
-    return (ret == SDK_RESULT_SUCCESS) ? SDK_HTTPS_SUCCESS : SDK_HTTPS_FAIL;
+    return (ret == WM_SDK_RESULT_SUCCESS) ? SDK_HTTPS_SUCCESS : SDK_HTTPS_FAIL;
 }
 
 static const SdkHttpsFunctionalityOps s_walnut_https_ops = {
@@ -403,13 +400,13 @@ static const SdkHttpsFunctionalityOps s_walnut_https_ops = {
     .download_get_file_size   = sdk_walnut_https_download_get_file_size_impl,
     .download_read_chunk      = sdk_walnut_https_download_read_chunk_impl,
     .download_terminate       = sdk_walnut_https_download_terminate_impl,
-    .https_init               = sdk_https_init,
-    .https_configure_ssl       = sdk_https_configure_ssl,
-    .https_set_params         = sdk_https_set_params,
-    .https_set_data           = sdk_https_set_data,
-    .https_action             = sdk_https_action,
-    .https_read               = sdk_https_read,
-    .https_terminate          = sdk_https_terminate,
+    .https_init               = wm_sdk_https_init,
+    .https_configure_ssl       = wm_sdk_https_configure_ssl,
+    .https_set_params         = wm_sdk_https_set_params,
+    .https_set_data           = wm_sdk_https_set_data,
+    .https_action             = wm_sdk_https_action,
+    .https_read               = wm_sdk_https_read,
+    .https_terminate          = wm_sdk_https_terminate,
     .https_handle_urc         = https_handle_urc_impl,
 };
 

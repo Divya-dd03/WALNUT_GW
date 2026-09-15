@@ -13,7 +13,7 @@
 #ifndef WEWARE_GPS_GPS_PACKET_H
 #define WEWARE_GPS_GPS_PACKET_H
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifdef __cplusplus
 extern "C" {

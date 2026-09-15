@@ -135,7 +135,7 @@ static void netlight_on_network_connected(const EventData *event, void *user_dat
     g_netlight_connected = TRUE;
     if (g_netlight_pin_ready && gpio_manager_is_ready()) {
         netlight_drive(TRUE);
-        sdk_debug_print("[netlight] Network connected - solid ON\r\n");
+        wm_sdk_debug_print("[netlight] Network connected - solid ON\r\n");
     }
 }
 
@@ -147,7 +147,7 @@ static void netlight_on_network_disconnected(const EventData *event, void *user_
     g_netlight_last_toggle_ticks = SDK_GET_TICKS();
     if (g_netlight_pin_ready && gpio_manager_is_ready())
         netlight_drive(FALSE);
-    sdk_debug_print("[netlight] Network lost - blinking %ums\r\n", (unsigned)NETLIGHT_BLINK_HALF_PERIOD_MS);
+    wm_sdk_debug_print("[netlight] Network lost - blinking %ums\r\n", (unsigned)NETLIGHT_BLINK_HALF_PERIOD_MS);
 }
 
 static void netlight_tick(void)
@@ -187,7 +187,7 @@ static void netlight_task_entry(void *arg)
         netlight_tick();
         /* Half the blink half-period so the toggle deadline is never missed
          * by a full step (500ms on/off stays visually even). */
-        sdk_task_sleep(NETLIGHT_BLINK_HALF_PERIOD_MS / 2U);
+        wm_sdk_task_sleep(NETLIGHT_BLINK_HALF_PERIOD_MS / 2U);
     }
 }
 
@@ -208,7 +208,7 @@ static void bridge_network_status(bool connected)
  *--------------------------------------------------------------*/
 static void print_system_status(void)
 {
-    UINT32 ticks_per_second = 1000; /* walnut sdk_get_ticks() is ms */
+    UINT32 ticks_per_second = 1000; /* walnut wm_sdk_get_ticks() is ms */
 
     UINT32 ticks   = SDK_GET_TICKS();
     UINT32 seconds = ticks / ticks_per_second;
@@ -223,9 +223,9 @@ static void print_system_status(void)
     UINT8  cpu_usage_percent = 0;
     BOOL   stats_available   = FALSE;
 
-    if (sdk_system_get_stats(&ram_total_kb, &ram_free_kb,
+    if (wm_sdk_system_get_stats(&ram_total_kb, &ram_free_kb,
                              &flash_total_kb, &flash_free_kb,
-                             &cpu_usage_percent) == SDK_RESULT_SUCCESS) {
+                             &cpu_usage_percent) == WM_SDK_RESULT_SUCCESS) {
         stats_available = TRUE;
     }
 
@@ -263,7 +263,7 @@ static void print_system_status(void)
         default: break;
     }
 
-    sdk_log_info(
+    wm_sdk_log_info(
         "WEWARE STATUS - Uptime: %lu:%02lu:%02lu | FW: %s | HW: %s | App: %s | SDK: WALNUT"
         " | Reset: %s (code:%lu) | Reboot: %s/%s #%lu | RAM: %s | Flash: %s | CPU: %s\r\n",
         (unsigned long)hours, (unsigned long)minutes, (unsigned long)secs,
@@ -283,26 +283,26 @@ Result system_manager_init(void)
 {
     (void)logger_init(g_log_config.output);
 
-    if (device_utils_init() != SDK_RESULT_SUCCESS) {
-        sdk_log_warning("Device utils init failed, continuing anyway");
+    if (device_utils_init() != WM_SDK_RESULT_SUCCESS) {
+        wm_sdk_log_warning("Device utils init failed, continuing anyway");
     }
 
     if (file_system_init() == RESULT_ERROR) {
-        sdk_log_error("File system init failed");
+        wm_sdk_log_error("File system init failed");
         return RESULT_ERROR;
     }
 
     (void)flash_paths_ensure_directories();
 
     if (post_boot_handler_init() != RESULT_SUCCESS)
-        sdk_log_warning("post_boot_handler init failed, continuing anyway");
+        wm_sdk_log_warning("post_boot_handler init failed, continuing anyway");
 
     config_get_current();
     system_config_migrate_from_tcp_if_needed();
     vehicle_state_init();
 
     if (event_manager_init() == RESULT_ERROR) {
-        sdk_log_error("Event manager init failed");
+        wm_sdk_log_error("Event manager init failed");
         return RESULT_ERROR;
     }
 
@@ -310,14 +310,14 @@ Result system_manager_init(void)
     {
         Result ota_r = ota_manager_init();
         if (ota_r != RESULT_SUCCESS && ota_r != RESULT_ALREADY_INITIALIZED)
-            sdk_log_warning("OTA manager init failed, continuing anyway");
+            wm_sdk_log_warning("OTA manager init failed, continuing anyway");
     }
 #else
-    sdk_log_warning("OTA manager disabled at compile time (WEWARE_OTA_ENABLED=0)");
+    wm_sdk_log_warning("OTA manager disabled at compile time (WEWARE_OTA_ENABLED=0)");
 #endif
 
     if (reset_handler_init() != RESULT_SUCCESS) {
-        sdk_log_warning("Reset handler init failed, continuing anyway");
+        wm_sdk_log_warning("Reset handler init failed, continuing anyway");
     }
 
     /* Walnut event bridge (see note above). Registering before network init
@@ -327,15 +327,15 @@ Result system_manager_init(void)
     if (gpio_manager_init() == RESULT_SUCCESS && board_pin_valid(SDK_GPIO_STATUS_PIN) &&
         gpio_manager_set_direction(SDK_GPIO_STATUS_PIN, GPIO_DIRECTION_OUTPUT) == RESULT_SUCCESS) {
         gpio_manager_set_level(SDK_GPIO_STATUS_PIN, GPIO_LEVEL_HIGH);
-        sdk_debug_print("GPIO status indicator set (pin %u)\r\n", (unsigned)SDK_GPIO_STATUS_PIN);
+        wm_sdk_debug_print("GPIO status indicator set (pin %u)\r\n", (unsigned)SDK_GPIO_STATUS_PIN);
     } else {
-        sdk_debug_print("GPIO status indicator disabled (pin unassigned)\r\n");
+        wm_sdk_debug_print("GPIO status indicator disabled (pin unassigned)\r\n");
     }
 
     if (board_pin_valid(POWER_SRC_SELECT_PIN) &&
         gpio_manager_set_direction(POWER_SRC_SELECT_PIN, GPIO_DIRECTION_OUTPUT) == RESULT_SUCCESS) {
         gpio_manager_set_level(POWER_SRC_SELECT_PIN, GPIO_LEVEL_LOW);
-        sdk_debug_print("Power source select GPIO set (pin %u)\r\n", (unsigned)POWER_SRC_SELECT_PIN);
+        wm_sdk_debug_print("Power source select GPIO set (pin %u)\r\n", (unsigned)POWER_SRC_SELECT_PIN);
     }
 
     if (board_pin_valid(SDK_GPIO_NETLIGHT_PIN) &&
@@ -344,26 +344,26 @@ Result system_manager_init(void)
         g_netlight_connected = FALSE;
         g_netlight_last_toggle_ticks = SDK_GET_TICKS();
         netlight_drive(FALSE);
-        sdk_debug_print("Netlight blue LED on pin %u\r\n", (unsigned)SDK_GPIO_NETLIGHT_PIN);
+        wm_sdk_debug_print("Netlight blue LED on pin %u\r\n", (unsigned)SDK_GPIO_NETLIGHT_PIN);
 
-        g_netlight_task = sdk_task_create(netlight_task_entry, NULL, "NETLED",
+        g_netlight_task = wm_sdk_task_create(netlight_task_entry, NULL, "NETLED",
                                           NULL, NETLIGHT_TASK_STACK, TP_TIMED_ACTIVITY);
         if (g_netlight_task == NULL)
-            sdk_log_warning("Netlight task create failed - falling back to WEMAIN tick (~1s blink)");
+            wm_sdk_log_warning("Netlight task create failed - falling back to WEMAIN tick (~1s blink)");
     } else {
-        sdk_debug_print("Netlight disabled (pin unassigned or direction set failed)\r\n");
+        wm_sdk_debug_print("Netlight disabled (pin unassigned or direction set failed)\r\n");
     }
     /* Netlight handlers registered regardless - they no-op without a pin and
      * start driving the LED the moment a pin define is supplied. */
     if (event_manager_register(EVENT_NETWORK_CONNECTED,    netlight_on_network_connected,    NULL, "Netlight") == RESULT_SUCCESS &&
         event_manager_register(EVENT_NETWORK_DISCONNECTED, netlight_on_network_disconnected, NULL, "Netlight") == RESULT_SUCCESS) {
-        sdk_debug_print("Netlight events registered\r\n");
+        wm_sdk_debug_print("Netlight events registered\r\n");
     }
 
     /* TODO(digout): relay digout manager not ported yet. */
 
     if (adc_manager_init() != RESULT_SUCCESS) {
-        sdk_log_warning("ADC manager init failed, continuing anyway");
+        wm_sdk_log_warning("ADC manager init failed, continuing anyway");
     } else {
         /* Prime power/charge before any GPS packet (e.g. TCP login+GPS) - avoids charge=OFF from zeroed PowerInfo */
         system_manager_adc_poll();
@@ -371,9 +371,9 @@ Result system_manager_init(void)
     g_adc_poll_last_ticks = SDK_GET_TICKS();
 
     /* TODO(accel): STK8321 accelerometer driver not ported (no walnut I2C
-     * transfer API in sdk_*; needs vendor i2cc_*). */
+     * transfer API in wm_sdk_*; needs vendor i2cc_*). */
 
-    sdk_log_info("System components initialized");
+    wm_sdk_log_info("System components initialized");
     return RESULT_SUCCESS;
 }
 
@@ -383,7 +383,7 @@ Result system_manager_deinit(void)
     event_manager_unregister(EVENT_NETWORK_DISCONNECTED, netlight_on_network_disconnected);
     weware_network_register_status_callback(NULL);
     if (g_netlight_task != NULL) {
-        (void)sdk_task_delete(g_netlight_task);
+        (void)wm_sdk_task_delete(g_netlight_task);
         g_netlight_task = NULL;
     }
     if (g_netlight_pin_ready) {
@@ -393,7 +393,7 @@ Result system_manager_deinit(void)
     (void)gpio_manager_deinit();
     (void)adc_manager_deinit();
     (void)event_manager_deinit();
-    sdk_log_info("System components deinitialized");
+    wm_sdk_log_info("System components deinitialized");
     return RESULT_SUCCESS;
 }
 
@@ -411,11 +411,11 @@ static void system_manager_adc_poll(void)
     if (adc_manager_get_voltage(ADC_GET_IGNITION, &iv) != RESULT_SUCCESS ||
         adc_manager_get_voltage(ADC_GET_EXTERNAL, &ev) != RESULT_SUCCESS ||
         adc_manager_get_vbat_voltage(&bv) != RESULT_SUCCESS) {
-        sdk_log_warning("[ADC] read failed");
+        wm_sdk_log_warning("[ADC] read failed");
         return;
     }
 
-    sdk_log_info("[ADC] ev: %.3fV, iv:%.3fV, bv:%.3fV", ev, iv, bv);
+    wm_sdk_log_info("[ADC] ev: %.3fV, iv:%.3fV, bv:%.3fV", ev, iv, bv);
 
     static BOOL prev_charge_connected = FALSE;
 
@@ -478,7 +478,7 @@ void system_manager_loop_iteration(void)
 #endif
 
     if (utils_get_uptime_seconds() >= UPTIME_SOFT_RESET_THRESHOLD_SEC) {
-        sdk_log_info("Uptime >= 24h, broadcasting soft reset");
+        wm_sdk_log_info("Uptime >= 24h, broadcasting soft reset");
         event_manager_broadcast(EVENT_RESET_SOFT, "System Manager", NULL, 0);
     }
 
@@ -488,6 +488,6 @@ void system_manager_loop_iteration(void)
     }
 
     if (reset_handler_process_deferred_reset()) {
-        sdk_log_info("Deferred reset performed");
+        wm_sdk_log_info("Deferred reset performed");
     }
 }

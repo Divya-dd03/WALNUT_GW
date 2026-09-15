@@ -29,7 +29,7 @@
 #include "strings.h"
 #include <stddef.h>
 
-#include "sdk_log.h"
+#include "wm_sdk_log.h"
 
 /*---------------------------------------------------------------
  * Log Configuration
@@ -270,7 +270,7 @@ static Result cmd_process_command(const ModuleMessage* request, char* response_b
      * and reply with an immediate ack; the OK/FAIL verdict follows from the UART task. */
     if (cmd_ctx.cmd_enum == CMD_PING_STM) {
         #ifdef UART_UNAVAILABLE
-        sdk_log_info("PING-STM received from module %u, address %s: UART unavailable",
+        wm_sdk_log_info("PING-STM received from module %u, address %s: UART unavailable",
                      (unsigned)request->source_module, request->address);
         snprintf(response_buffer, buffer_size, "ERROR: PING-STM unavailable (UART module not present)");
         #else
@@ -362,7 +362,7 @@ Result command_manager_deinit(void)
         return RESULT_SUCCESS;
 
     if (g_command_manager.task_ref) {
-        sdk_task_delete(g_command_manager.task_ref);
+        wm_sdk_task_delete(g_command_manager.task_ref);
         g_command_manager.task_ref = NULL;
     }
 
@@ -377,7 +377,7 @@ Result command_manager_deinit(void)
     memset(&g_command_manager.task_stats, 0, sizeof(g_command_manager.task_stats));
     g_command_manager.module = NULL;
     g_command_manager.initialized = FALSE;
-    sdk_log_info("Command manager stopped");
+    wm_sdk_log_info("Command manager stopped");
     return RESULT_SUCCESS;
 }
 
@@ -392,7 +392,7 @@ Result command_manager_init(void)
 
     g_command_manager.module = g_modules[MODULE_ID_CMD];
     if (!g_command_manager.module) {
-        sdk_log_error("Command manager module not found");
+        wm_sdk_log_error("Command manager module not found");
         return RESULT_ERROR;
     }
 
@@ -408,21 +408,21 @@ Result command_manager_init(void)
 
     if (queue_manager_create(&g_command_manager.module->config.msg_q_config,
                              &g_command_manager.module->config.msg_q) != RESULT_SUCCESS) {
-        sdk_log_error("Command queue create failed");
+        wm_sdk_log_error("Command queue create failed");
         return RESULT_ERROR;
     }
 
     memset(&g_command_manager.stats, 0, sizeof(g_command_manager.stats));
     memset(&g_command_manager.task_stats, 0, sizeof(g_command_manager.task_stats));
 
-    g_command_manager.task_ref = sdk_task_create(cmd_task_entry,
+    g_command_manager.task_ref = wm_sdk_task_create(cmd_task_entry,
                                                  NULL,
                                                  "cmdTask",
                                                  g_command_manager.task_stack,
                                                  sizeof(g_command_manager.task_stack),
                                                  5);
     if (!g_command_manager.task_ref) {
-        sdk_log_error("Command task create failed");
+        wm_sdk_log_error("Command task create failed");
         queue_manager_destroy(g_command_manager.module->config.msg_q,
                               &g_command_manager.module->config.msg_q_config);
         g_command_manager.module->config.msg_q = NULL;
@@ -430,6 +430,6 @@ Result command_manager_init(void)
     }
 
     g_command_manager.initialized = TRUE;
-    sdk_log_info("Command manager ready");
+    wm_sdk_log_info("Command manager ready");
     return RESULT_SUCCESS;
 }

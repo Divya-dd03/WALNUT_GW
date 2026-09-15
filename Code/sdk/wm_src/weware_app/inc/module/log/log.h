@@ -11,7 +11,7 @@
  * Global ceiling: pass -DLOG_GLOBAL_LEVEL=3 (see levels below).
  * Effective level = min(LOG_MODULE_LEVEL, LOG_GLOBAL_LEVEL).
  *
- * Walnut backend: log_printf() (log_manager.c) forwards to sdk_debug_print
+ * Walnut backend: log_printf() (log_manager.c) forwards to wm_sdk_debug_print
  * (USB VCOM; unmuted by wm_logger_mode(TRUE) in weware_main).
  */
 

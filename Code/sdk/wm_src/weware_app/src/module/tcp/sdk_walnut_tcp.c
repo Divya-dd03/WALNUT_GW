@@ -25,8 +25,8 @@
 
 // sdk
 #include "wm_global.h"
-#include "sdk_os.h"
-#include "sdk_log.h"
+#include "wm_sdk_os.h"
+#include "wm_sdk_log.h"
 
 // app
 #include "tcp/sdk_functionality_tcp.h"
@@ -139,7 +139,7 @@ const SdkTcpFunctionalityOps *sdk_walnut_get_tcp_functionality_ops(void)
  * sdk_tcp_connect_host
  *
  * Defining this here is what allows the abstraction to own the plain
- * sdk_tcp_* names: it is the only symbol of the kernel's sdk_tcp.c.obj
+ * sdk_tcp_* names: it is the only symbol of the kernel's wm_sdk_tcp.c.obj
  * (lib_wmsrc_B.a) referenced from app code (wm_ui_tcp demo), so with a
  * local definition that archive member is never pulled in and the
  * remaining sdk_tcp_* definitions cannot collide.
@@ -169,16 +169,16 @@ int sdk_tcp_connect_host(int fd, const char *host, unsigned short port,
     hints.ai_protocol = IPPROTO_TCP;
     snprintf(portstr, sizeof(portstr), "%u", (unsigned)port);
 
-    start = sdk_get_ticks();
+    start = wm_sdk_get_ticks();
     for (;;) {
         ret = lwip_getaddrinfo(host, portstr, &hints, &result);
         if (ret == 0 && result != NULL)
             break;
-        if ((sdk_get_ticks() - start) >= timeout_ms) {
-            sdk_log_error("TCP connect_host: DNS failed for %s (ret=%d)", host, ret);
+        if ((wm_sdk_get_ticks() - start) >= timeout_ms) {
+            wm_sdk_log_error("TCP connect_host: DNS failed for %s (ret=%d)", host, ret);
             return -1;
         }
-        sdk_task_sleep(WALNUT_TCP_DNS_RETRY_MS);
+        wm_sdk_task_sleep(WALNUT_TCP_DNS_RETRY_MS);
     }
 
     ret = connect_impl(fd, result->ai_addr, (unsigned int)result->ai_addrlen);
@@ -188,7 +188,7 @@ int sdk_tcp_connect_host(int fd, const char *host, unsigned short port,
         int err = lwip_getsockerrno(fd);
         if (err == EINPROGRESS || err == EAGAIN || err == EWOULDBLOCK)
             return 0;   /* attempt under way - outcome arrives as an event */
-        sdk_log_error("TCP connect_host: connect failed (errno=%d)", err);
+        wm_sdk_log_error("TCP connect_host: connect failed (errno=%d)", err);
         return -1;
     }
     return 0;

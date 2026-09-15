@@ -32,8 +32,8 @@
 
 // sdk
 #include "wm_global.h"
-#include "sdk_os.h"
-#include "sdk_log.h"
+#include "wm_sdk_os.h"
+#include "wm_sdk_log.h"
 
 // app
 #include "tcp/tcp.h"
@@ -146,7 +146,7 @@ const char *weware_tcp_state_to_string(TcpState state)
 static void tcp_log_state_transition(TcpState old_state, TcpState new_state)
 {
     if (old_state != new_state)
-        sdk_log_info("TCP [STATE] %s -> %s",
+        wm_sdk_log_info("TCP [STATE] %s -> %s",
                      weware_tcp_state_to_string(old_state),
                      weware_tcp_state_to_string(new_state));
 }
@@ -177,7 +177,7 @@ static bool tcp_try_recv_once_and_dispatch(void)
             rlen = (int)buf_size;
             buf[rlen] = '\0';
         }
-        sdk_log_info("[TCP] Received data (%d bytes): %.*s", rlen, (int)((rlen < 200) ? rlen : 200), buf);
+        wm_sdk_log_info("[TCP] Received data (%d bytes): %.*s", rlen, (int)((rlen < 200) ? rlen : 200), buf);
         memset(cmd_msg, 0, sizeof(g_tcp_cmd_msg));
         cmd_msg->source_module = MODULE_ID_TCP;
         cmd_msg->destination_module = MODULE_ID_CMD;
@@ -200,14 +200,14 @@ static bool tcp_try_recv_once_and_dispatch(void)
             }
         }
         if (command_manager_accept_request(cmd_msg) != RESULT_SUCCESS)
-            sdk_log_warning("[TCP] Failed to send to command manager");
+            wm_sdk_log_warning("[TCP] Failed to send to command manager");
         return true;   /* more data may be pending, keep flag for next cycle */
     }
     if (rlen == 0)
         return false;  /* closed */
     if (sdk_tcp_get_sock_errno(fd) == EAGAIN)
         return false;  /* not ready this cycle; clear flag, next RCVPLUS will set it again */
-    sdk_log_warning("[TCP] recv failed, errno: %d", sdk_tcp_get_sock_errno(fd));
+    wm_sdk_log_warning("[TCP] recv failed, errno: %d", sdk_tcp_get_sock_errno(fd));
     return false;
 }
 
@@ -222,14 +222,14 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
 
     /* Validate state before proceeding */
     if (current_state < TCP_STATE_INIT || current_state > TCP_STATE_ERROR) {
-        sdk_log_error("TCP [CALLBACK] invalid state %d, ignoring event %d",
+        wm_sdk_log_error("TCP [CALLBACK] invalid state %d, ignoring event %d",
                       current_state, evt);
         return;
     }
 
     /* Ignore callbacks for the wrong / already-closed socket */
     if (s != g_tcp_client.tcp_fd || g_tcp_client.tcp_fd < 0) {
-        sdk_debug_print("TCP [CALLBACK] ignoring event %d for stale fd %d (current %d)\r\n",
+        wm_sdk_debug_print("TCP [CALLBACK] ignoring event %d for stale fd %d (current %d)\r\n",
                         evt, s, g_tcp_client.tcp_fd);
         return;
     }
@@ -242,29 +242,29 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
     case SDK_NETCONN_EVT_CONNECTED:
         if (current_state == TCP_STATE_CONNECTING ||
             current_state == TCP_STATE_SOCKET_CREATED) {
-            sdk_log_info("TCP [CALLBACK] connection established -> CONNECTED");
+            wm_sdk_log_info("TCP [CALLBACK] connection established -> CONNECTED");
             SET_STATE(g_tcp_client.state, TCP_STATE_CONNECTED);
         } else if (current_state == TCP_STATE_ERROR) {
             /* Connection succeeded despite ERROR state - recover */
-            sdk_log_info("TCP [CALLBACK] CONNECTED in ERROR state - recovering");
+            wm_sdk_log_info("TCP [CALLBACK] CONNECTED in ERROR state - recovering");
             SET_STATE(g_tcp_client.state, TCP_STATE_CONNECTED);
         } else if (current_state == TCP_STATE_CONNECTED) {
             /* Duplicate (the monitor is level-triggered) - ignore */
         } else {
             /* Unexpected state - but connection succeeded, so accept it
              * (reference behavior) */
-            sdk_log_warning("TCP [CALLBACK] CONNECTED in unexpected state %s, accepting anyway",
+            wm_sdk_log_warning("TCP [CALLBACK] CONNECTED in unexpected state %s, accepting anyway",
                             weware_tcp_state_to_string(current_state));
             SET_STATE(g_tcp_client.state, TCP_STATE_CONNECTED);
         }
         break;
 
     case SDK_NETCONN_EVT_SENDPLUS:
-        sdk_debug_print("TCP [CALLBACK] SENDPLUS: send buffer available\r\n");
+        wm_sdk_debug_print("TCP [CALLBACK] SENDPLUS: send buffer available\r\n");
         break;
 
     case SDK_NETCONN_EVT_SENDMINUS:
-        sdk_debug_print("TCP [CALLBACK] SENDMINUS: send buffer not available\r\n");
+        wm_sdk_debug_print("TCP [CALLBACK] SENDMINUS: send buffer not available\r\n");
         break;
 
     case SDK_NETCONN_EVT_SENDACKED:
@@ -276,7 +276,7 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
             if (g_tcp_client.tcp_bytes_acked >= g_tcp_client.tcp_bytes_sent) {
                 /* Re-read state to ensure we have the latest value */
                 TcpState ack_state = g_tcp_client.state;
-                sdk_log_info("TCP [CALLBACK] send fully acknowledged (%d bytes), state=%s",
+                wm_sdk_log_info("TCP [CALLBACK] send fully acknowledged (%d bytes), state=%s",
                              g_tcp_client.tcp_bytes_sent,
                              weware_tcp_state_to_string(ack_state));
 
@@ -285,28 +285,28 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
                     SET_STATE(g_tcp_client.state, TCP_STATE_ACK_RECEIVED);
                 }
             } else {
-                sdk_debug_print("TCP [CALLBACK] partial ACK: %d/%d bytes\r\n",
+                wm_sdk_debug_print("TCP [CALLBACK] partial ACK: %d/%d bytes\r\n",
                                 g_tcp_client.tcp_bytes_acked,
                                 g_tcp_client.tcp_bytes_sent);
             }
         } else {
-            sdk_debug_print("TCP [CALLBACK] SENDACKED with no pending send\r\n");
+            wm_sdk_debug_print("TCP [CALLBACK] SENDACKED with no pending send\r\n");
         }
         break;
     }
 
     case SDK_NETCONN_EVT_RCVPLUS:
         /* Set flag only; task loop does recv and dispatch */
-        sdk_debug_print("TCP [CALLBACK] RCVPLUS: len=%u (recv in task)\r\n", len);
+        wm_sdk_debug_print("TCP [CALLBACK] RCVPLUS: len=%u (recv in task)\r\n", len);
         g_tcp_client.recv_pending = 1;
         break;
 
     case SDK_NETCONN_EVT_RCVMINUS:
-        sdk_debug_print("TCP [CALLBACK] RCVMINUS\r\n");
+        wm_sdk_debug_print("TCP [CALLBACK] RCVMINUS\r\n");
         break;
 
     case SDK_NETCONN_EVT_ACCEPTPLUS:
-        sdk_debug_print("TCP [CALLBACK] ACCEPTPLUS (client socket - unexpected)\r\n");
+        wm_sdk_debug_print("TCP [CALLBACK] ACCEPTPLUS (client socket - unexpected)\r\n");
         break;
 
     case SDK_NETCONN_EVT_CLOSE_WAIT:
@@ -316,7 +316,7 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
     case SDK_NETCONN_EVT_ERROR_ABRT:
     case SDK_NETCONN_EVT_ERROR:
     {
-        sdk_log_warning("TCP [CALLBACK] %s in state %s -> CLOSED",
+        wm_sdk_log_warning("TCP [CALLBACK] %s in state %s -> CLOSED",
                         (evt == SDK_NETCONN_EVT_CLOSE_WAIT)   ? "CLOSE_WAIT" :
                         (evt == SDK_NETCONN_EVT_CLOSE_NORMAL) ? "CLOSE_NORMAL" :
                         (evt == SDK_NETCONN_EVT_ERROR_CLSD)   ? "ERROR_CLSD" :
@@ -337,7 +337,7 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
     }
 
     default:
-        sdk_log_warning("TCP [CALLBACK] unknown event %d for socket %d", evt, s);
+        wm_sdk_log_warning("TCP [CALLBACK] unknown event %d for socket %d", evt, s);
         break;
     }
 }
@@ -347,7 +347,7 @@ void tcp_socket_event_callback(int s, int evt, unsigned short int len)
  *==============================================================*/
 static void tcp_check_state_timeout(void)
 {
-    UINT32 elapsed = sdk_get_ticks() - g_tcp_client.state_entry_tick;
+    UINT32 elapsed = wm_sdk_get_ticks() - g_tcp_client.state_entry_tick;
     UINT32 timeout = 0;
     UINT32 i;
 
@@ -364,7 +364,7 @@ static void tcp_check_state_timeout(void)
     if (timeout == 0U || elapsed < timeout)
         return;
 
-    sdk_log_warning("TCP [TIMEOUT] state timeout in %s after %lu ms",
+    wm_sdk_log_warning("TCP [TIMEOUT] state timeout in %s after %lu ms",
                     weware_tcp_state_to_string(g_tcp_client.state),
                     (unsigned long)elapsed);
 
@@ -377,7 +377,7 @@ static void tcp_check_state_timeout(void)
     else
         SET_STATE(g_tcp_client.state, TCP_STATE_CLOSED);
 
-    g_tcp_client.state_entry_tick = sdk_get_ticks();
+    g_tcp_client.state_entry_tick = wm_sdk_get_ticks();
 }
 
 static void tcp_check_overall_timeout(void)
@@ -388,19 +388,19 @@ static void tcp_check_overall_timeout(void)
     for (i = 0; i < sizeof(g_tcp_state_timeouts) / sizeof(g_tcp_state_timeouts[0]); i++) {
         if (g_tcp_state_timeouts[i].state == g_tcp_client.state &&
             g_tcp_state_timeouts[i].reset_overall) {
-            g_tcp_client.session_down_since = sdk_get_ticks();
+            g_tcp_client.session_down_since = wm_sdk_get_ticks();
             return;
         }
     }
 
-    if ((sdk_get_ticks() - g_tcp_client.session_down_since) < TCP_OVERALL_TIMEOUT_MS)
+    if ((wm_sdk_get_ticks() - g_tcp_client.session_down_since) < TCP_OVERALL_TIMEOUT_MS)
         return;
 
-    sdk_log_error("TCP [TIMEOUT] overall timeout expired in %s, closing connection for recovery",
+    wm_sdk_log_error("TCP [TIMEOUT] overall timeout expired in %s, closing connection for recovery",
                   weware_tcp_state_to_string(g_tcp_client.state));
     tcp_reset_send_tracking();
     SET_STATE(g_tcp_client.state, TCP_STATE_CLOSED);
-    g_tcp_client.session_down_since = sdk_get_ticks();
+    g_tcp_client.session_down_since = wm_sdk_get_ticks();
 }
 
 /*===============================================================
@@ -411,10 +411,10 @@ static void tcp_client_main_loop(void *param)
     TcpState last_state = g_tcp_client.state;
 
     (void)param;
-    sdk_log_info("TCP client main loop started");
+    wm_sdk_log_info("TCP client main loop started");
 
-    g_tcp_client.state_entry_tick   = sdk_get_ticks();
-    g_tcp_client.session_down_since = sdk_get_ticks();
+    g_tcp_client.state_entry_tick   = wm_sdk_get_ticks();
+    g_tcp_client.session_down_since = wm_sdk_get_ticks();
 
     while (1) {
         g_tcp_client.total_iterations++;
@@ -427,7 +427,7 @@ static void tcp_client_main_loop(void *param)
         /* Validate state before processing (defensive check) */
         if (g_tcp_client.state < TCP_STATE_INIT ||
             g_tcp_client.state > TCP_STATE_ERROR) {
-            sdk_log_error("TCP invalid state %d (possible corruption), resetting to INIT",
+            wm_sdk_log_error("TCP invalid state %d (possible corruption), resetting to INIT",
                           g_tcp_client.state);
             SET_STATE(g_tcp_client.state, TCP_STATE_INIT);
         }
@@ -436,7 +436,7 @@ static void tcp_client_main_loop(void *param)
         if (last_state != g_tcp_client.state) {
             tcp_log_state_transition(last_state, g_tcp_client.state);
             last_state = g_tcp_client.state;
-            g_tcp_client.state_entry_tick = sdk_get_ticks();
+            g_tcp_client.state_entry_tick = wm_sdk_get_ticks();
         }
 
         tcp_check_state_timeout();
@@ -553,7 +553,7 @@ static void tcp_client_main_loop(void *param)
             break;
         }
 
-        sdk_task_sleep(TCP_TASK_INTERVAL_MS);
+        wm_sdk_task_sleep(TCP_TASK_INTERVAL_MS);
     }
 }
 
@@ -570,18 +570,18 @@ bool weware_tcp_is_ready(void)
     return g_tcp_client.session_up;
 }
 
-SdkResult weware_tcp_send(const void *data, UINT16 len)
+wm_SdkResult weware_tcp_send(const void *data, UINT16 len)
 {
     /* Reference-parity store-and-forward: push a ModuleMessage row into the
      * persistent TCP send queue (TCP_SEND_Q). The queue absorbs payloads
      * while the session is down; rows are popped only after the server ACK
      * and persist across a soft reboot. */
     if (!data || len == 0U || len > MODULE_MESSAGE_INLINE_SIZE)
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
 
     const ModuleConfig *tcp_config = module_manager_get_config(MODULE_ID_TCP);
     if (!tcp_config || !tcp_config->msg_q || tcp_config->msg_q_config.element_size == 0U)
-        return SDK_RESULT_ERROR;
+        return WM_SDK_RESULT_ERROR;
 
     ModuleMessage module_msg = {0};
     module_msg.source_module      = MODULE_ID_TCP;
@@ -592,24 +592,24 @@ SdkResult weware_tcp_send(const void *data, UINT16 len)
 
     Result qr = queue_push(tcp_config->msg_q, &tcp_config->msg_q_config, &module_msg);
     if (qr != RESULT_SUCCESS)
-        return (qr == RESULT_BUSY) ? SDK_RESULT_BUSY : SDK_RESULT_ERROR;
-    return SDK_RESULT_SUCCESS;
+        return (qr == RESULT_BUSY) ? WM_SDK_RESULT_BUSY : WM_SDK_RESULT_ERROR;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_tcp_reset_connection(void)
+wm_SdkResult weware_tcp_reset_connection(void)
 {
-    sdk_log_info("TCP connection reset requested");
+    wm_sdk_log_info("TCP connection reset requested");
     SET_STATE(g_tcp_client.state, TCP_STATE_CLOSED);
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_tcp_init(void)
+wm_SdkResult weware_tcp_init(void)
 {
-    sdk_log_info("Initializing TCP module");
+    wm_sdk_log_info("Initializing TCP module");
 
     if (g_tcp_client.initialized) {
-        sdk_log_warning("TCP module already initialized");
-        return SDK_RESULT_SUCCESS;
+        wm_sdk_log_warning("TCP module already initialized");
+        return WM_SDK_RESULT_SUCCESS;
     }
 
     /* Select the modem backend for the TCP functionality abstraction */
@@ -617,7 +617,7 @@ SdkResult weware_tcp_init(void)
 
     /* Config (defaults applied on first use) */
     g_tcp_client.config = weware_tcp_config_get();
-    sdk_log_info("TCP config loaded: %s:%u",
+    wm_sdk_log_info("TCP config loaded: %s:%u",
                  g_tcp_client.config->server_ip,
                  (unsigned)g_tcp_client.config->server_port);
 
@@ -630,11 +630,11 @@ SdkResult weware_tcp_init(void)
         tcp_module->config.msg_q_config.capacity > 0U) {
         if (queue_manager_create(&tcp_module->config.msg_q_config,
                                  &tcp_module->config.msg_q) != RESULT_SUCCESS) {
-            sdk_log_error("Failed to create TCP send queue '%s'",
+            wm_sdk_log_error("Failed to create TCP send queue '%s'",
                           tcp_module->config.msg_q_config.name);
-            return SDK_RESULT_ERROR;
+            return WM_SDK_RESULT_ERROR;
         }
-        sdk_log_info("TCP send queue created: '%s' (cap=%u, elem=%u)",
+        wm_sdk_log_info("TCP send queue created: '%s' (cap=%u, elem=%u)",
                      tcp_module->config.msg_q_config.name,
                      (unsigned)tcp_module->config.msg_q_config.capacity,
                      (unsigned)tcp_module->config.msg_q_config.element_size);
@@ -645,29 +645,29 @@ SdkResult weware_tcp_init(void)
     /* The event-monitor (TCPMON) task is owned by the walnut TCP backend
      * and starts with the first event-driven socket. */
     if (g_tcp_task == NULL) {
-        g_tcp_task = sdk_task_create(tcp_client_main_loop, NULL, "TCPCLI",
+        g_tcp_task = wm_sdk_task_create(tcp_client_main_loop, NULL, "TCPCLI",
                                      NULL, TCP_TASK_STACK,
                                      TP_TIMED_ACTIVITY);
         if (g_tcp_task == NULL) {
-            sdk_log_error("Failed to create TCP task");
-            return SDK_RESULT_ERROR;
+            wm_sdk_log_error("Failed to create TCP task");
+            return WM_SDK_RESULT_ERROR;
         }
     }
 
     g_tcp_client.initialized = true;
-    sdk_log_info("TCP client ready");
-    return SDK_RESULT_SUCCESS;
+    wm_sdk_log_info("TCP client ready");
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_tcp_deinit(void)
+wm_SdkResult weware_tcp_deinit(void)
 {
     if (!g_tcp_client.initialized)
-        return SDK_RESULT_SUCCESS;
+        return WM_SDK_RESULT_SUCCESS;
 
-    sdk_log_info("Deinitializing TCP client...");
+    wm_sdk_log_info("Deinitializing TCP client...");
 
     if (g_tcp_task != NULL) {
-        sdk_task_delete(g_tcp_task);
+        wm_sdk_task_delete(g_tcp_task);
         g_tcp_task = NULL;
     }
 
@@ -689,6 +689,6 @@ SdkResult weware_tcp_deinit(void)
     g_tcp_client.tcp_fd = -1;
     tcp_reset_send_tracking();
 
-    sdk_log_info("TCP client stopped");
-    return SDK_RESULT_SUCCESS;
+    wm_sdk_log_info("TCP client stopped");
+    return WM_SDK_RESULT_SUCCESS;
 }

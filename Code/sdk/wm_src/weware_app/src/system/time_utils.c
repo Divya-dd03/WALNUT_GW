@@ -86,20 +86,20 @@ Result time_utils_get_time(TimeType type,
                            int *h, int *mi, int *s,
                            UINT32 *unix_out)
 {
-    SdkNetworkTime t = {0};
+    wm_SdkNetworkTime t = {0};
     UINT32         unix_time = 0U;
-    SdkResult      sdk_result;
+    wm_SdkResult      sdk_result;
 
     if (type != TIME_TYPE_UTC && type != TIME_TYPE_LOCAL &&
         type != TIME_TYPE_UTC_UNIX && type != TIME_TYPE_LOCAL_UNIX)
         return RESULT_INVALID_PARAM;
 
     if (type == TIME_TYPE_UTC || type == TIME_TYPE_UTC_UNIX)
-        sdk_result = sdk_network_rtc_get_utc_time(&t);
+        sdk_result = wm_sdk_network_rtc_get_utc_time(&t);
     else
-        sdk_result = sdk_network_rtc_get_local_time(&t);
+        sdk_result = wm_sdk_network_rtc_get_local_time(&t);
 
-    if (sdk_result != SDK_RESULT_SUCCESS)
+    if (sdk_result != WM_SDK_RESULT_SUCCESS)
         return RESULT_ERROR;
 
     if (t.year < 1970 || t.year > (int)TIME_UTILS_MAX_YEAR)

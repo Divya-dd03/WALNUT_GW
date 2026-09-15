@@ -15,7 +15,7 @@
 
 // sdk
 #include "wm_global.h"
-#include "sdk_log.h"
+#include "wm_sdk_log.h"
 
 // app
 #include "tcp/tcp.h"
@@ -147,61 +147,61 @@ WewareTcpConfig *weware_tcp_config_get(void)
     if (!g_tcp_config_initialized) {
         weware_tcp_config_get_defaults(&g_tcp_config);
         g_tcp_config_initialized = true;
-        sdk_log_info("TCP default config initialized (%s:%u)",
+        wm_sdk_log_info("TCP default config initialized (%s:%u)",
                      g_tcp_config.server_ip, (unsigned)g_tcp_config.server_port);
     }
     return &g_tcp_config;
 }
 
-SdkResult weware_tcp_config_validate(const WewareTcpConfig *config)
+wm_SdkResult weware_tcp_config_validate(const WewareTcpConfig *config)
 {
     if (!config)
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
 
     if (!tcp_config_host_is_valid(config->server_ip)) {
-        sdk_log_error("TCP invalid server: %s", config->server_ip);
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("TCP invalid server: %s", config->server_ip);
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
     if (!tcp_config_port_is_valid((long)config->server_port)) {
-        sdk_log_error("TCP invalid port: %u", (unsigned)config->server_port);
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("TCP invalid port: %u", (unsigned)config->server_port);
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
     if (config->connection_timeout_ms == 0U ||
         config->send_timeout_ms == 0U ||
         config->retry_interval_ms == 0U) {
-        sdk_log_error("TCP invalid timeouts: conn=%lu send=%lu retry=%lu",
+        wm_sdk_log_error("TCP invalid timeouts: conn=%lu send=%lu retry=%lu",
                       (unsigned long)config->connection_timeout_ms,
                       (unsigned long)config->send_timeout_ms,
                       (unsigned long)config->retry_interval_ms);
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_tcp_config_set_server(const char *server_ip, UINT16 server_port)
+wm_SdkResult weware_tcp_config_set_server(const char *server_ip, UINT16 server_port)
 {
     WewareTcpConfig *config = weware_tcp_config_get();
 
     if (!tcp_config_host_is_valid(server_ip)) {
-        sdk_log_error("TCP invalid server: %s", server_ip ? server_ip : "NULL");
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("TCP invalid server: %s", server_ip ? server_ip : "NULL");
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
     if (!tcp_config_port_is_valid((long)server_port)) {
-        sdk_log_error("TCP invalid port: %u", (unsigned)server_port);
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("TCP invalid port: %u", (unsigned)server_port);
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     strcpy(config->server_ip, server_ip);
     config->server_port = server_port;
 
-    sdk_log_info("TCP server updated: %s:%u",
+    wm_sdk_log_info("TCP server updated: %s:%u",
                  config->server_ip, (unsigned)config->server_port);
 
     weware_tcp_reset_connection();
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_tcp_config_set(const char *config_string)
+wm_SdkResult weware_tcp_config_set(const char *config_string)
 {
     WewareTcpConfig *config = weware_tcp_config_get();
     WewareTcpConfig  staged;
@@ -210,12 +210,12 @@ SdkResult weware_tcp_config_set(const char *config_string)
     char            *next;
 
     if (!config_string) {
-        sdk_log_error("TCP config string is NULL");
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("TCP config string is NULL");
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
     if (strlen(config_string) >= sizeof(work)) {
-        sdk_log_error("TCP config string too long");
-        return SDK_RESULT_INVALID_PARAM;
+        wm_sdk_log_error("TCP config string too long");
+        return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     /* Stage on a copy: every value validates before any is applied */
@@ -236,8 +236,8 @@ SdkResult weware_tcp_config_set(const char *config_string)
 
         value = strchr(key, ':');
         if (value == NULL) {
-            sdk_log_error("TCP config token has no value: %s", key);
-            return SDK_RESULT_INVALID_PARAM;
+            wm_sdk_log_error("TCP config token has no value: %s", key);
+            return WM_SDK_RESULT_INVALID_PARAM;
         }
         *value++ = '\0';
         key   = tcp_config_trim(key);
@@ -245,65 +245,65 @@ SdkResult weware_tcp_config_set(const char *config_string)
 
         if (strcmp(key, "ip") == 0) {
             if (!tcp_config_host_is_valid(value)) {
-                sdk_log_error("TCP invalid server: %s", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid server: %s", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
             strcpy(staged.server_ip, value);
         } else if (strcmp(key, "port") == 0) {
             long port = atol(value);
             if (!tcp_config_port_is_valid(port)) {
-                sdk_log_error("TCP invalid port: %s (must be 1-65535)", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid port: %s (must be 1-65535)", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
             staged.server_port = (UINT16)port;
         } else if (strcmp(key, "conn-to") == 0) {
             if (!tcp_config_parse_timeout(value, &staged.connection_timeout_ms)) {
-                sdk_log_error("TCP invalid conn-to: %s (must be > 0)", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid conn-to: %s (must be > 0)", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
         } else if (strcmp(key, "send-to") == 0) {
             if (!tcp_config_parse_timeout(value, &staged.send_timeout_ms)) {
-                sdk_log_error("TCP invalid send-to: %s (must be > 0)", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid send-to: %s (must be > 0)", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
         } else if (strcmp(key, "retry") == 0) {
             if (!tcp_config_parse_timeout(value, &staged.retry_interval_ms)) {
-                sdk_log_error("TCP invalid retry: %s (must be > 0)", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid retry: %s (must be > 0)", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
         } else if (strcmp(key, "loginwithgps") == 0) {
             if (!tcp_config_parse_bool(value, &staged.login_with_gps)) {
-                sdk_log_error("TCP invalid loginwithgps: %s (use true or false)", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid loginwithgps: %s (use true or false)", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
         } else if (strcmp(key, "live-first") == 0) {
             if (!tcp_config_parse_bool(value, &staged.live_first)) {
-                sdk_log_error("TCP invalid live-first: %s (use true or false)", value);
-                return SDK_RESULT_INVALID_PARAM;
+                wm_sdk_log_error("TCP invalid live-first: %s (use true or false)", value);
+                return WM_SDK_RESULT_INVALID_PARAM;
             }
         } else {
-            sdk_log_error("TCP unknown config key: %s", key);
-            return SDK_RESULT_INVALID_PARAM;
+            wm_sdk_log_error("TCP unknown config key: %s", key);
+            return WM_SDK_RESULT_INVALID_PARAM;
         }
     }
 
-    if (weware_tcp_config_validate(&staged) != SDK_RESULT_SUCCESS)
-        return SDK_RESULT_INVALID_PARAM;
+    if (weware_tcp_config_validate(&staged) != WM_SDK_RESULT_SUCCESS)
+        return WM_SDK_RESULT_INVALID_PARAM;
 
     *config = staged;
-    sdk_log_info("TCP configuration updated");
+    wm_sdk_log_info("TCP configuration updated");
 
     weware_tcp_reset_connection();
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }
 
-SdkResult weware_tcp_config_get_string(char *buffer, size_t buffer_size)
+wm_SdkResult weware_tcp_config_get_string(char *buffer, size_t buffer_size)
 {
     const WewareTcpConfig *config = weware_tcp_config_get();
     int                    len;
 
     if (!buffer || buffer_size == 0U)
-        return SDK_RESULT_INVALID_PARAM;
+        return WM_SDK_RESULT_INVALID_PARAM;
 
     len = snprintf(buffer, buffer_size,
                    "ip:%s,port:%u,conn-to:%lu,send-to:%lu,retry:%lu,"
@@ -317,8 +317,8 @@ SdkResult weware_tcp_config_get_string(char *buffer, size_t buffer_size)
                    config->live_first ? "true" : "false");
 
     if (len < 0 || (size_t)len >= buffer_size) {
-        sdk_log_error("TCP config string buffer too small");
-        return SDK_RESULT_ERROR;
+        wm_sdk_log_error("TCP config string buffer too small");
+        return WM_SDK_RESULT_ERROR;
     }
-    return SDK_RESULT_SUCCESS;
+    return WM_SDK_RESULT_SUCCESS;
 }

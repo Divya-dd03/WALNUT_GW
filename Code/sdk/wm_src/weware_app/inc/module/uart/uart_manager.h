@@ -1,19 +1,19 @@
 /**
  * @file uart_manager.h
- * @brief UART manager for weware platform - handles data sending and receiving over the app UART (SDK_UART_PORT_1)
+ * @brief UART manager for weware platform - handles data sending and receiving over the app UART (WM_SDK_UART_PORT_1)
  *
  * Walnut port of the reference firmware's module/uart/uart_manager.h. The
  * public API is unchanged; only the SDK-facing include and the port/param
  * constants differ (see uart_manager.c for the full API mapping):
- *   CG "functionality/sdk_functionality_uart.h"  ->  walnut "sdk_uart.h"
- *   SDK_UART_PORT_MAIN / SDK_UART_PORT_LOG       ->  SDK_UART_PORT_1 (the
+ *   CG "functionality/sdk_functionality_uart.h"  ->  walnut "wm_sdk_uart.h"
+ *   SDK_UART_PORT_MAIN / SDK_UART_PORT_LOG       ->  WM_SDK_UART_PORT_1 (the
  *                                                    adapter's single logical
  *                                                    port; see below)
  *   SDK_UART_BAUD_115200 / SDK_UART_WORD_LEN_8 / SDK_UART_ONE_STOP_BIT /
  *   SDK_UART_NO_PARITY_BITS                      ->  plain numeric values
  *                                                    (walnut defines no such
- *                                                    enums; see sdk_types.h
- *                                                    SdkUartConfig)
+ *                                                    enums; see wm_sdk_types.h
+ *                                                    wm_SdkUartConfig)
  *
  * This module provides a simple interface for UART communication using the app port.
  * It handles initialization, data sending, and routes received responses to destination modules.
@@ -30,20 +30,20 @@
 #include "common/types.h"
 #include "module/module_manager.h"
 #include "sdk_platform.h"
-#include "sdk_uart.h"   /* reference: functionality/sdk_functionality_uart.h */
+#include "wm_sdk_uart.h"   /* reference: functionality/sdk_functionality_uart.h */
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** UART configuration (port and params for walnut sdk_uart_set_config()).
- *  @note @c port must be SDK_UART_PORT_1 - the only id sdk_uart.h defines and
- *        the only one its sdk_uart_set_config() accepts. Be aware that id maps
+/** UART configuration (port and params for walnut wm_sdk_uart_set_config()).
+ *  @note @c port must be WM_SDK_UART_PORT_1 - the only id wm_sdk_uart.h defines and
+ *        the only one its wm_sdk_uart_set_config() accepts. Be aware that id maps
  *        to drvUart port 0, the CP debug console, which the driver refuses to
  *        open; see the blocker note at the top of uart_manager.c. */
 typedef struct {
-    UINT32 port;       /**< SDK_UART_PORT_1 (the only id sdk_uart.h defines) */
+    UINT32 port;       /**< WM_SDK_UART_PORT_1 (the only id wm_sdk_uart.h defines) */
     UINT32 baud_rate;  /**< e.g. 115200 */
     UINT8 data_bits;   /**< 5..8 */
     UINT8 stop_bits;   /**< 1 or 2 */

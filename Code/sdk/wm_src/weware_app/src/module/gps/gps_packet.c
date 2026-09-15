@@ -7,7 +7,7 @@
   *          wire format.
   *
   *          Real sources on walnut today:
-  *            - GNSS sample (caller supplies, from sdk_gps_get_navdata)
+  *            - GNSS sample (caller supplies, from wm_sdk_gps_get_navdata)
   *            - ignition / motion / charge = GPS runtime latches (g_gps)
   *            - VDOP byte   = weware network state (values match reference)
   *            - PDOP byte   = weware TCP client state (values match reference)
@@ -23,7 +23,7 @@
 
 // sdk
 #include "wm_global.h"
-#include "sdk_log.h"
+#include "wm_sdk_log.h"
 
 // app
 #include "module/gps/gps_packet.h"
@@ -61,7 +61,7 @@ static void write_fixed_point_be(float value, int scale, char *output, int bytes
 int gps_packet_create(char *buffer, int buffer_size, const GpsPacket *gps_data)
 {
     if (!buffer || buffer_size < GPS_PACKET_TOTAL_SIZE || !gps_data) {
-        sdk_log_error("GPS invalid parameters for packet creation");
+        wm_sdk_log_error("GPS invalid parameters for packet creation");
         return 0;
     }
 

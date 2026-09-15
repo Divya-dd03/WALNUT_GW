@@ -18,7 +18,7 @@
 #ifndef WEWARE_GPS_MANAGER_H
 #define WEWARE_GPS_MANAGER_H
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 #include "module/gps/gps_config.h"
 #include "module/gps/gps_packet.h"
 #include "common/task_stats.h"
@@ -50,9 +50,9 @@ typedef struct
 
     BOOL gnss_mode_set;
     BOOL gnss_nmea_rate_set;
-    BOOL gnss_nmea_output_configured; /**< sdk_gps_enable_nmea_output applied */
+    BOOL gnss_nmea_output_configured; /**< wm_sdk_gps_enable_nmea_output applied */
     BOOL gnss_nmea_output_started;    /**< TRUE after successful query/parse; FALSE on parse failure */
-    BOOL gnss_info_report_set;        /**< sdk_gps_set_gnss_info_period attempted (walnut: NOT_SUPPORTED) */
+    BOOL gnss_info_report_set;        /**< wm_sdk_gps_set_gnss_info_period attempted (walnut: NOT_SUPPORTED) */
     BOOL gnss_start_mode_set;
     BOOL gnss_agps_set;               /**< A-GPS opened; cleared every 4 h when no fix (agps_ref) */
     UINT32 last_agps_open_time;       /**< Uptime (sec) when A-GPS was last opened; 0 = never */
@@ -63,8 +63,8 @@ typedef struct
  * API
  * ============================================================================ */
 
-SdkResult gps_manager_init(void);
-SdkResult gps_manager_deinit(void);
+wm_SdkResult gps_manager_init(void);
+wm_SdkResult gps_manager_deinit(void);
 BOOL gps_manager_get_last_valid_position(double *lat, double *lon, float *course);
 
 /** @return TRUE when ignition input is on (same as GPS packet IgnOn). */

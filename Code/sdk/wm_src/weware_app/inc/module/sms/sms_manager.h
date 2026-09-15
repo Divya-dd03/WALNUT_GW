@@ -6,10 +6,10 @@
  * Walnut adaptations vs reference (business logic unchanged):
  * - The reference includes "functionality/sdk_functionality_sms.h" (the CG
  *   platform dispatcher). Walnut has no functionality layer for SMS: the
- *   kernel SDK exports the sdk_sms_* calls directly from "sdk_sms.h".
+ *   kernel SDK exports the wm_sdk_sms_* calls directly from "wm_sdk_sms.h".
  * - SDK_SMS_MAX_ADDRESS_LENGTH does not exist in the walnut SDK - it is
  *   defined below with the same value the CG compat header used (21).
- * - task_stack[] is dropped: walnut's sdk_task_create() allocates the stack
+ * - task_stack[] is dropped: walnut's wm_sdk_task_create() allocates the stack
  *   when stack_ptr is NULL (the convention every ported walnut module uses),
  *   so only the size is kept. TaskStats is a walnut addition (task_stats.c
  *   stack-usage sampling, same as GPS/TCP/SIM).
@@ -23,7 +23,7 @@
 #include "module/module_manager.h"
 #include "module/sms/sms_config.h"
 #include "sdk_platform.h"
-#include "sdk_sms.h"      /* reference: functionality/sdk_functionality_sms.h */
+#include "wm_sdk_sms.h"      /* reference: functionality/sdk_functionality_sms.h */
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +35,7 @@ extern "C" {
 
 /**
  * @brief Maximum SMS message content length (excluding NULL terminator)
- * @note Matches the walnut SDK's SDK_SMS_MAX_BODY_LEN (single GSM-7 segment).
+ * @note Matches the walnut SDK's WM_SDK_SMS_MAX_BODY_LEN (single GSM-7 segment).
  */
 #define SMS_MANAGER_MAX_MESSAGE_LENGTH    160
 
@@ -58,7 +58,7 @@ extern "C" {
 /**
  * @brief SMS task stack size (bytes)
  * @note Reference used a static 2048-byte task_stack[] member; on walnut the
- *       kernel allocates the stack (sdk_task_create stack_ptr = NULL) and the
+ *       kernel allocates the stack (wm_sdk_task_create stack_ptr = NULL) and the
  *       ported modules all use 4096.
  */
 #define SMS_MANAGER_TASK_STACK_SIZE       4096U

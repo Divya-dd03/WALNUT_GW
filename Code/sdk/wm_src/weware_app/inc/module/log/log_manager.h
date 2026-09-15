@@ -4,7 +4,7 @@
  *
  * Walnut adaptation: the reference async lock-free ring + logger task is not
  * ported yet; log_printf() formats and forwards synchronously to
- * sdk_debug_print (same console the rest of weware_app logs to).
+ * wm_sdk_debug_print (same console the rest of weware_app logs to).
  * The API is kept identical so the module registry and system_manager port
  * verbatim. TODO(log): port the async ring backend if logging volume grows.
  */
@@ -27,7 +27,7 @@ Result log_module_init(void);
 
 /**
  * @brief Initialize runtime log sink.
- * @note Walnut: both outputs currently map to sdk_debug_print (USB VCOM).
+ * @note Walnut: both outputs currently map to wm_sdk_debug_print (USB VCOM).
  */
 Result logger_init(LogOutput output);
 

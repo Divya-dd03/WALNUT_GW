@@ -8,7 +8,7 @@
  * Flow (CG reference adapted - walnut URCs are bare urcEvent_e codes with no
  * mask or payload, and the kernel emits no SMS/GNSS URCs, so the reference's
  * SMS inlining and NMEA assembler have no counterpart here):
- * - URC processor task is the SOLE sdk_urc_register() registrant (mask = all)
+ * - URC processor task is the SOLE wm_sdk_urc_register() registrant (mask = all)
  * - Task receives the UINT32 event code from its SDK message queue
  * - Event code is mapped to a module (net/PDP -> NETWORK, SIM_* -> SIM) and
  *   queue_push()ed to that module's config.urc_q when non-NULL
@@ -24,7 +24,7 @@
 
 #include <stdbool.h>
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,17 +32,17 @@ extern "C" {
 
 /**
  * @brief Initialize URC processor
- * @return SDK_RESULT_SUCCESS on success, SDK_RESULT_ERROR on failure
+ * @return WM_SDK_RESULT_SUCCESS on success, WM_SDK_RESULT_ERROR on failure
  * @note Creates modem URC queue and processing task. Task registers modem URC feed.
  */
-SdkResult urc_processor_init(void);
+wm_SdkResult urc_processor_init(void);
 
 /**
  * @brief Deinitialize URC processor
- * @return SDK_RESULT_SUCCESS on success
+ * @return WM_SDK_RESULT_SUCCESS on success
  * @note Stops task, deletes queue, clears bindings
  */
-SdkResult urc_processor_deinit(void);
+wm_SdkResult urc_processor_deinit(void);
 
 #ifdef __cplusplus
 }

@@ -7,10 +7,10 @@
  *        default (same pattern as sdk_platform_tcp.c);
  *        sdk_platform_register_https_ops() can override at any time.
  *
- *        WALNUT: the CG low-level dispatchers (sdk_https_init/.../terminate)
+ *        WALNUT: the CG low-level dispatchers (wm_sdk_https_init/.../terminate)
  *        are absent on purpose - the kernel wrappers in lib_wmsrc_B.a own
  *        those names with a CG-compatible contract and cannot be shadowed
- *        (sdk_ota.c.obj references that archive member). The five functions
+ *        (wm_sdk_ota.c.obj references that archive member). The five functions
  *        whose CG names collide with kernel symbols of different semantics
  *        are written with their CG names below; the compat remap in
  *        sdk_functionality_https_compat.h renames them to
@@ -108,10 +108,10 @@ sdk_https_returncode_t sdk_https_download_terminate(void)
     return ops->download_terminate();
 }
 
-SdkResult sdk_https_handle_urc(void* msgq, void (*callback)(void*))
+wm_SdkResult sdk_https_handle_urc(void* msgq, void (*callback)(void*))
 {
     const SdkHttpsFunctionalityOps *ops = https_ops();
     if (!ops || !ops->https_handle_urc)
-        return SDK_RESULT_NOT_SUPPORTED;
+        return WM_SDK_RESULT_NOT_SUPPORTED;
     return ops->https_handle_urc(msgq, callback);
 }
