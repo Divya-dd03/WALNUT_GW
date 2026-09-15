@@ -134,8 +134,46 @@ void wm_WIFI_EN(BOOL enable);
 /*LDO Control */
 void wm_LDO_3V3_CTRL(BOOL enable);
 
-/* GPS reset/enable control (drives BK16 RST_N inverted via GPS_EN pin) */
+/* GPS reset/enable control (drives GNSS RST_N inverted via GPS_EN pin) */
 void wm_GPS_EN(BOOL enable);
+
+/* GPS LNA (BGA525N6) mode. No-op on boards without an LNA. */
+typedef enum
+{
+	WM_LNA_OFF = 0,
+	WM_LNA_HIGH_GAIN,
+	WM_LNA_STANDARD,
+	WM_LNA_LOW_POWER
+} wm_lna_mode_e;
+
+void wm_GPS_LNA_CTRL(wm_lna_mode_e mode);
+
+/* BLE enable control */
+void wm_BLE_EN(BOOL enable);
+
+/* Board configuration (set per board in wm_gpio_init) */
+
+/* GPS */
+extern BOOL GPS_SUPPORT;
+extern unsigned int GPS_UART_PORT;
+extern unsigned int GPS_UART_MUX_FUNC;
+extern unsigned int GPS_UART_TX_MUX;
+extern unsigned int GPS_UART_RX_MUX;
+extern unsigned int GPS_UART_TX;
+extern unsigned int GPS_UART_RX;
+extern unsigned int GPS_EN;
+extern unsigned int GPS_EN_MUX;
+
+/* BLE */
+extern BOOL BLE_SUPPORT;
+extern unsigned int BLE_UART_PORT;
+extern unsigned int BLE_UART_MUX_FUNC;
+extern unsigned int BLE_UART_TX_MUX;
+extern unsigned int BLE_UART_RX_MUX;
+extern unsigned int BLE_UART_TX;
+extern unsigned int BLE_UART_RX;
+extern unsigned int BLE_EN;
+extern unsigned int BLE_EN_MUX;
 
 #ifdef __cplusplus
 }

@@ -34,9 +34,9 @@ extern "C"
 /*******************************************************************************
 ** Defines
 ******************************************************************************/
-/* NMEA v4.10 caps a sentence at 82 chars; GGA/RMC are well under. Longer
- * lines (never expected here) are discarded to the next '$'. */
-#define WM_NMEA_LINE_MAX 100
+/* NMEA v4.10 caps a sentence at 82 chars, but multi-constellation GSA/GSV run
+ * past it. Longer lines are discarded to the next '$'. */
+#define WM_NMEA_LINE_MAX 128
 
 /*******************************************************************************
 ** Type Definitions
@@ -101,6 +101,10 @@ void wm_nmea_reset(wm_nmea_ctx_t *ctx);
  * NUL-terminated in ctx->line. Non-sentence bytes - including the receiver's
  * ASCII boot word - are ignored. */
 bool wm_nmea_feed(wm_nmea_ctx_t *ctx, char c);
+
+/* XOR of every char after '$' up to (not including) '*' or the NUL. Use it to
+ * build the "*hh" suffix of an outgoing sentence. */
+uint8_t wm_nmea_checksum(const char *s);
 
 /* XOR of every char strictly between '$' and '*', compared against the two hex
  * digits after '*'. Returns false if there is no '*' checksum or it mismatches. */

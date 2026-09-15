@@ -7,8 +7,9 @@
  *          Drives the receiver over the existing wm_uart layer (115200 8N1),
  *          parses NMEA (GGA + RMC), and maintains a mutex-guarded last-known
  *          fix. A dedicated RTOS task owns parsing; consumers read via
- *          wm_gps_get_fix() or register a fix callback. Configuration uses the
- *          receiver's ASCII "$POLCFG..." command set.
+ *          wm_gps_get_fix() or register a fix callback. The part fitted is
+ *          selected by WM_GPS_CURRENT_CHIP below; its proprietary command set
+ *          is the only chip-specific part of the module.
  ******************************************************************************
  * @attention
  *
@@ -35,6 +36,14 @@ extern "C"
 /*******************************************************************************
 ** Defines
 ******************************************************************************/
+/* GNSS part fitted. Selects the proprietary command set below and in the .c. */
+#define WM_GPS_CHIP_BK1616P   1      /* Beken, "$POLCFG..." commands */
+#define WM_GPS_CHIP_CC1161W   2      /* ICOE, "ICOE Protocol"        */
+
+#define WM_GPS_CURRENT_CHIP   WM_GPS_CHIP_BK1616P
+
+#if (WM_GPS_CURRENT_CHIP == WM_GPS_CHIP_BK1616P)
+
 /* Constellation bits for wm_gps_set_constellations() ($POLCFGSYS,<mask>). */
 #define WM_GPS_SYS_GPS   (1u << 0)   /* GPS L1                */
 #define WM_GPS_SYS_BDS   (1u << 2)   /* Beidou B1I            */
@@ -48,6 +57,31 @@ extern "C"
 #define WM_GPS_MSG_VTG   3
 #define WM_GPS_MSG_RMC   5
 #define WM_GPS_MSG_ZDA   20
+
+#elif (WM_GPS_CURRENT_CHIP == WM_GPS_CHIP_CC1161W)
+
+/* Signal bits for wm_gps_set_constellations() ($CFGSYS,h<mask>). One bit per
+ * signal, not per constellation. ROM default is h11111 (GPS|BDS|GLO|GAL|QZSS). */
+#define WM_GPS_SYS_GPS   (1uL << 0)   /* GPS L1C/A             */
+#define WM_GPS_SYS_BDS   (1uL << 4)   /* Beidou B1I            */
+#define WM_GPS_SYS_BDS_B1C (1uL << 7) /* Beidou B1C (off by default) */
+#define WM_GPS_SYS_GLO   (1uL << 8)   /* GLONASS L1            */
+#define WM_GPS_SYS_GAL   (1uL << 12)  /* Galileo E1            */
+#define WM_GPS_SYS_QZSS  (1uL << 16)  /* QZSS                  */
+#define WM_GPS_SYS_SBAS  (1uL << 17)  /* SBAS                  */
+
+/* NMEA message ids for wm_gps_set_sentence() ($CFGMSG,0,<id>,<cycle>,1). */
+#define WM_GPS_MSG_GGA   0
+#define WM_GPS_MSG_GLL   1
+#define WM_GPS_MSG_GSA   2
+#define WM_GPS_MSG_GSV   3
+#define WM_GPS_MSG_RMC   4
+#define WM_GPS_MSG_VTG   5
+#define WM_GPS_MSG_ZDA   6
+
+#else
+#error "WM_GPS_CURRENT_CHIP: unsupported part"
+#endif
 
 /*******************************************************************************
 ** Type Definitions
@@ -71,8 +105,8 @@ typedef void (*wm_gps_nmea_cb)(const char *line, uint16_t len);
  * the receiver on with the default configuration. Idempotent. */
 void      wm_gps_init(void);
 
-/* Power the receiver on (LDO + UART open + default $POLCFG config) / off
- * (UART close; the shared 3V3 LDO is cut only if WM_GPS_OWNS_LDO). */
+/* Power the receiver on (UART open + reset pulse + default config) / off
+ * (UART close + hold in reset; the shared 3V3 LDO is left up). */
 SC_STATUS wm_gps_power_on(void);
 SC_STATUS wm_gps_power_off(void);
 
@@ -97,19 +131,17 @@ void      wm_gps_set_fix_cb(wm_gps_fix_cb cb);
  * unaffected: the fix callback keeps firing whether or not this is set. */
 void      wm_gps_set_nmea_cb(wm_gps_nmea_cb cb);
 
-/* Configuration ($POLCFG...). Best-effort: fire-and-forget unless
- * WM_GPS_REQUIRE_ACK is set. Return SC_FAIL only on a bad argument or a UART
- * that is not open. */
-SC_STATUS wm_gps_set_update_rate(uint8_t nav_hz);       /* 1 | 5 | 10 | 20     */
-SC_STATUS wm_gps_set_constellations(uint8_t mask);      /* WM_GPS_SYS_* bits    */
+/* Configuration. Each command waits for the receiver's ACK and returns SC_FAIL
+ * on a bad argument, a UART that is not open, a $FAIL reply or an ACK timeout. */
+SC_STATUS wm_gps_set_update_rate(uint8_t nav_hz);       /* 1 | 2 | 4 | 5        */
+SC_STATUS wm_gps_set_constellations(uint32_t mask);     /* WM_GPS_SYS_* bits    */
 SC_STATUS wm_gps_set_sentence(uint8_t msg_id, bool on); /* WM_GPS_MSG_*         */
 SC_STATUS wm_gps_save_config(void);                     /* persist to GNSS flash*/
 SC_STATUS wm_gps_reset(bool cold);                      /* cold vs hot restart  */
 
-/* Send a raw "$POLCFG..." command body (no leading '$' handling - pass the
- * whole "$POLCFG..." string). The line terminator is appended per
- * WM_GPS_CMD_TERM. */
-SC_STATUS wm_gps_send_cmd(const char *polcfg_cmd);
+/* Send a raw command body (pass the whole sentence, '$' included). The line
+ * terminator is appended per WM_GPS_CMD_TERM. */
+SC_STATUS wm_gps_send_cmd(const char *nmea_cmd);
 
 #ifdef __cplusplus
 }

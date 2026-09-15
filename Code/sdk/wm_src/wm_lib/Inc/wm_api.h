@@ -28,5 +28,6 @@
 #include "wm_power_secure.h"
 #include "wm_usb_secure.h"
 #include "wm_gps_secure.h"
+#include "wm_ble_secure.h"
 #include "wm_ota_secure.h"
 #endif

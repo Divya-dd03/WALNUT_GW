@@ -70,47 +70,53 @@ typedef enum
     WM_AUDIO_STOPPED_URC = 107
 }WM_URC_TASK_SELECTION_CASE;
 
-/* UI App - Common Gateway SDK demo menu (one entry per sdk_* API section,
+/* UI App - Common Gateway SDK demo menu (one entry per wm_sdk_* API section,
  * matching the WEGW API requirements document). */
 typedef enum
 {
-    WM_DEMO_NETWORK = 1,   /* sdk_network_*  */
-    WM_DEMO_SIM,           /* sdk_sim_*      */
-    WM_DEMO_SMS_CONFIG,    /* sdk_sms_set_format + set_charset + set_new_msg_ind + queue */
-    WM_DEMO_SMS_STORAGE,   /* sdk_sms_get_storage_status */
-    WM_DEMO_SMS_SEND,      /* sdk_sms_send               */
-    WM_DEMO_SMS_READ,      /* sdk_sms_read (index 1)     */
-    WM_DEMO_SMS_DELETE,    /* sdk_sms_delete (index 1)   */
-    WM_DEMO_SMS_DELETE_ALL,/* sdk_sms_delete_all         */
-    WM_DEMO_SMS_DRAIN,     /* sdk_sms_msgq_poll + drain  */
-    WM_DEMO_GPS_CONFIG,    /* sdk_gps_set_mode/_nmea_rate/_enable_nmea_output   */
-    WM_DEMO_GPS_FIX,       /* sdk_gps_get_navdata (snapshot)                    */
-    WM_DEMO_GPS_STREAM,    /* sdk_gps_set_fix_callback (live fixes)             */
-    WM_DEMO_GPS_NMEA,      /* sdk_gps_set_nmea_callback (raw sentences)         */
-    WM_DEMO_GPS_POWER_OFF, /* sdk_gps_set_power_status(0)                       */
-    WM_DEMO_TCP,           /* sdk_tcp_*      */
+    WM_DEMO_NETWORK = 1,   /* wm_sdk_network_*  */
+    WM_DEMO_SIM,           /* wm_sdk_sim_*      */
+    WM_DEMO_SMS_CONFIG,    /* wm_sdk_sms_set_format + set_charset + set_new_msg_ind + queue */
+    WM_DEMO_SMS_STORAGE,   /* wm_sdk_sms_get_storage_status */
+    WM_DEMO_SMS_SEND,      /* wm_sdk_sms_send               */
+    WM_DEMO_SMS_READ,      /* wm_sdk_sms_read (index 1)     */
+    WM_DEMO_SMS_DELETE,    /* wm_sdk_sms_delete (index 1)   */
+    WM_DEMO_SMS_DELETE_ALL,/* wm_sdk_sms_delete_all         */
+    WM_DEMO_SMS_DRAIN,     /* wm_sdk_sms_msgq_poll + drain  */
+    WM_DEMO_GPS_CONFIG,    /* wm_sdk_gps_set_mode/_nmea_rate/_enable_nmea_output   */
+    WM_DEMO_GPS_FIX,       /* wm_sdk_gps_get_navdata (snapshot)                    */
+    WM_DEMO_GPS_STREAM,    /* wm_sdk_gps_set_fix_callback (live fixes)             */
+    WM_DEMO_GPS_NMEA,      /* wm_sdk_gps_set_nmea_callback (raw sentences)         */
+    WM_DEMO_GPS_POWER_OFF, /* wm_sdk_gps_set_power_status(0)                       */
+    WM_DEMO_TCP,           /* wm_sdk_tcp_*      */
     /* HTTPS demos, all in wm_ui_https.c. */
-    WM_DEMO_HTTPS,         /* sdk_https_*: GET, synchronous                   */
-    WM_DEMO_HTTPS_POST,    /* sdk_https_*: POST a JSON body + api-key header  */
-    WM_DEMO_HTTPS_ASYNC,   /* sdk_https_*: async GET, result on a queue       */
-    WM_DEMO_HTTPS_DOWNLOAD,/* sdk_https_download_*: ranged fetch + SHA-256    */
+    WM_DEMO_HTTPS,         /* wm_sdk_https_*: GET, synchronous                   */
+    WM_DEMO_HTTPS_POST,    /* wm_sdk_https_*: POST a JSON body + api-key header  */
+    WM_DEMO_HTTPS_ASYNC,   /* wm_sdk_https_*: async GET, result on a queue       */
+    WM_DEMO_HTTPS_DOWNLOAD,/* wm_sdk_https_download_*: ranged fetch + SHA-256    */
     /* OTA / DFOTA demos, all in wm_ui_ota.c. */
-    WM_DEMO_OTA_VERSION,   /* sdk_ota_get_app_version / _get_sdk_version       */
-    WM_DEMO_OTA_UPDATE,    /* sdk_ota_*: download + verify + apply APP image   */
-    WM_DEMO_DFOTA_UPDATE,  /* sdk_ota_*: download + verify + apply kernel patch*/
-    WM_DEMO_UART,          /* sdk_uart_*     */
-    WM_DEMO_FILE,          /* sdk_file_*     */
-    WM_DEMO_STORAGE,       /* sdk_storage_*  */
-    WM_DEMO_OS,            /* sdk_os / rtos  */
-    WM_DEMO_DEVICE,        /* sdk_device_*   */
-    WM_DEMO_GPIO,          /* sdk_gpio_*     */
-    WM_DEMO_ADC,           /* sdk_adc_*      */
-    WM_DEMO_I2C,           /* sdk_i2c_*      */
-    WM_DEMO_URC,           /* sdk_urc_*      */
-    WM_DEMO_SYSTEM,        /* sdk_system_*   */
-    WM_DEMO_LOG,           /* sdk_log_*      */
+    WM_DEMO_OTA_VERSION,   /* wm_sdk_ota_get_app_version / _get_sdk_version       */
+    WM_DEMO_OTA_UPDATE,    /* wm_sdk_ota_*: download + verify + apply APP image   */
+    WM_DEMO_DFOTA_UPDATE,  /* wm_sdk_ota_*: download + verify + apply kernel patch*/
+    WM_DEMO_UART,          /* wm_sdk_uart_*     */
+    WM_DEMO_FILE,          /* wm_sdk_file_*     */
+    WM_DEMO_STORAGE,       /* wm_sdk_storage_*  */
+    WM_DEMO_OS,            /* wm_sdk_os / rtos  */
+    WM_DEMO_DEVICE,        /* wm_sdk_device_*   */
+    WM_DEMO_GPIO,          /* wm_sdk_gpio_*     */
+    WM_DEMO_ADC,           /* wm_sdk_adc_*      */
+    WM_DEMO_I2C,           /* wm_sdk_i2c_*      */
+    WM_DEMO_URC,           /* wm_sdk_urc_*      */
+    WM_DEMO_SYSTEM,        /* wm_sdk_system_*   */
+    WM_DEMO_LOG,           /* wm_sdk_log_*      */
     /* MQTT lives in its own demo file (wm_ui_mqtt.c). */
-    WM_DEMO_MQTT           /* sdk_mqtt_*: connect + stream raw NMEA (toggle)  */
+    WM_DEMO_MQTT,          /* wm_sdk_mqtt_*: connect + stream raw NMEA (toggle)  */
+    WM_DEMO_LED,           /* wm_sdk_led_*: R/G/B indicator LEDs + blink         */
+    /* BLE demos, all in wm_ui_ble.c. */
+    WM_DEMO_BLE_SCAN,      /* wm_sdk_ble_scan_*: filtered scan (toggle)          */
+    WM_DEMO_BLE_READ,      /* fuel readings + one Autoguard health exchange   */
+    WM_DEMO_BLE_MONITOR,   /* repeat the read on a period (toggle)            */
+    WM_DEMO_BLE_POWER_OFF  /* wm_sdk_ble_set_power_status(0)                     */
 }WM_TASK_SELECTION;
 
 /* HTTP Control */

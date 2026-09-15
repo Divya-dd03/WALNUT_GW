@@ -35,7 +35,7 @@ volatile BOOL g_ota_http_direct_mode = FALSE;
 BOOL g_update_started=FALSE;
 BOOL g_updated_payment_history=FALSE;
 /* Paytm_WDT (watchdog flag required by the prebuilt lib_wmsrc.a) is defined in
- * sdk_wm.c alongside the other prebuilt-lib requirements. */
+ * wm_sdk_wm.c alongside the other prebuilt-lib requirements. */
 
 /* Customer App AUDIO */
 char audio_dir_path[50] = {0};
@@ -79,7 +79,7 @@ BOOL HTTP_DIAG = FALSE;
 BOOL WM_PING_DIAG = FALSE;
 BOOL GPIO_DIAG = FALSE;
 BOOL TIMER_DIAG = FALSE;
-BOOL COMM_DIAG = FALSE;
+BOOL COMM_DIAG = TRUE;
 
 /* System Control */
 volatile BOOL g_is_powering_off = FALSE;
