@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file    sdk_log.h
+ * @file    wm_sdk_log.h
  * @author  Walnut Medical
  * @brief   Common Gateway SDK - LOG / debug-print API.
  ******************************************************************************
@@ -12,10 +12,10 @@
  ******************************************************************************
  */
 
-#ifndef __SDK_LOG_H__
-#define __SDK_LOG_H__
+#ifndef __WM_SDK_LOG_H__
+#define __WM_SDK_LOG_H__
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -26,32 +26,32 @@ extern "C"
  * @brief  Initialise the debug UART used for log output.
  * @param  port    UART port id.
  * @param  config  UART configuration (may be NULL to use platform defaults).
- * @return SdkResult - 0 success; negative on failure.
+ * @return wm_SdkResult - 0 success; negative on failure.
  */
-SdkResult sdk_log_init_uart(UINT32 port, const SdkUartConfig *config);
+wm_SdkResult wm_sdk_log_init_uart(UINT32 port, const wm_SdkUartConfig *config);
 
 /**
  * @brief  Raw debug print (printf-style), no level/tag.
  */
-void sdk_debug_print(const char *format, ...);
+void wm_sdk_debug_print(const char *format, ...);
 
 /**
  * @brief  Emit an INFO-level log line.
  */
-void sdk_log_info(const char *format, ...);
+void wm_sdk_log_info(const char *format, ...);
 
 /**
  * @brief  Emit a WARNING-level log line.
  */
-void sdk_log_warning(const char *format, ...);
+void wm_sdk_log_warning(const char *format, ...);
 
 /**
  * @brief  Emit an ERROR-level log line.
  */
-void sdk_log_error(const char *format, ...);
+void wm_sdk_log_error(const char *format, ...);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __SDK_LOG_H__ */
+#endif /* __WM_SDK_LOG_H__ */

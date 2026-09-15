@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file    sdk_wm.h
+ * @file    wm_sdk_wm.h
  * @author  Walnut Medical
  * @brief   Common Gateway SDK - WM platform glue.
  *
@@ -17,10 +17,10 @@
  ******************************************************************************
  */
 
-#ifndef __SDK_WM_H__
-#define __SDK_WM_H__
+#ifndef __WM_SDK_WM_H__
+#define __WM_SDK_WM_H__
 
-#include "sdk_types.h"
+#include "wm_sdk_types.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -47,27 +47,27 @@ typedef enum
 
 /* Single application URC/event callback (the customer SDK hook). Invoked from
  * the URC task with the event code; pass NULL to clear. */
-typedef void (*sdk_urc_cb_t)(urcEvent_e event);
+typedef void (*wm_sdk_urc_cb_t)(urcEvent_e event);
 
 /**
  * @brief  Register (or clear, with NULL) the application URC event callback.
  */
-void sdk_set_urc_callback(sdk_urc_cb_t cb);
+void wm_sdk_set_urc_callback(wm_sdk_urc_cb_t cb);
 
 /**
  * @brief  Internal: forward a URC event to the queues registered via
- *         sdk_urc_register(). Not for application use.
+ *         wm_sdk_urc_register(). Not for application use.
  */
-void sdk_urc_dispatch(urcEvent_e event);
+void wm_sdk_urc_dispatch(urcEvent_e event);
 
 /**
  * @brief  Boot-time system bring-up, called from appimg_enter() for non-LIB
  *         builds: power-key registration, module HW config, soundbox power-on,
  *         battery startup, IMEI, SDK version, RTC auto-update and - when
- *         WM_GPS_SUPPORT is set - GNSS bring-up via sdk_gps_init().
- * @return SdkResult - 0 success; negative on failure.
+ *         WM_GPS_SUPPORT is set - GNSS bring-up via wm_sdk_gps_init().
+ * @return wm_SdkResult - 0 success; negative on failure.
  */
-SdkResult wm_system_init(void);
+wm_SdkResult wm_system_init(void);
 
 /**
  * @brief  Create the UI command queue (WM_UI_msgq) and the "UIPROC" dispatcher
@@ -79,4 +79,4 @@ void wm_ui_app_init(void);
 }
 #endif
 
-#endif /* __SDK_WM_H__ */
+#endif /* __WM_SDK_WM_H__ */
