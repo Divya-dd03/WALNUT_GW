@@ -7,7 +7,7 @@
   *          The mutual-TLS set the earlier demo used against AWS IoT Core,
   *          restored unchanged: Amazon Root CA 1 as the trust anchor, plus a
   *          device certificate and its private key. The MQTT demo
-  *          (wm_ui_mqtt.c) passes all three to sdk_mqtt_config() when
+  *          (wm_ui_mqtt.c) passes all three to wm_sdk_mqtt_config() when
   *          WM_MQTT_USE_TLS is enabled.
   *
   * @warning These are shared DEVELOPMENT credentials, identical in every image
@@ -16,9 +16,9 @@
   *          is NOT how a fleet should ship: one leaked image would expose every
   *          unit, and AWS IoT policies could not tell devices apart. For
   *          production, provision a per-device certificate into the credential
-  *          store and read it back with sdk_storage_cred_read()
-  *          (SDK_STORAGE_CRED_ROOT_CA / _CLIENT_CERT / _CLIENT_KEY) instead of
-  *          compiling credentials in - sdk_mqtt_config() takes either source.
+  *          store and read it back with wm_sdk_storage_cred_read()
+  *          (WM_SDK_STORAGE_CRED_ROOT_CA / _CLIENT_CERT / _CLIENT_KEY) instead of
+  *          compiling credentials in - wm_sdk_mqtt_config() takes either source.
   ******************************************************************************
   * @attention
   *

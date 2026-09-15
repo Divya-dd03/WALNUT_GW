@@ -1,21 +1,21 @@
 /**
   ******************************************************************************
-  * @file    wm_ui_tcp.h
+  * @file    wm_ui_ble.h
   * @author  Walnut Medical
-  * @brief   Common Gateway (WEGW) reference application - TCP demo.
+  * @brief   Common Gateway (WEGW) reference application - BLE demos.
   *
-  *          Declares the menu handler defined in wm_ui_tcp.c, run from the
+  *          Declares the menu handlers defined in wm_ui_ble.c, run from the
   *          "UIPROC" dispatcher in wm_ui_app.c.
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2026 Walnut Medical
+  * Copyright (c) 2026 Walnut Medical.
   * All rights reserved.
   *
   ******************************************************************************
   */
-#ifndef __WM_UI_TCP__H__
-#define __WM_UI_TCP__H__
+#ifndef __WM_UI_BLE__H__
+#define __WM_UI_BLE__H__
 
 /*******************************************************************************
 ** Header Files
@@ -31,13 +31,21 @@ extern "C"
 /*******************************************************************************
 ** Menu handlers
 ******************************************************************************/
-/* Open an event-driven socket to an echo host, send a short payload, and print
- * the reply. Returns to the menu immediately: the exchange is reported through
- * the socket callback. */
-void wm_ui_tcp_demo(void);
+/* Start or stop scanning for the fuel probes. Powers BLE up on first use. */
+void wm_ui_ble_scan_demo(void);
+
+/* Print the latest fuel readings and run one Autoguard health exchange. */
+void wm_ui_ble_read_demo(void);
+
+/* Start or stop the background task that repeats the read on a fixed period.
+ * Returns immediately. */
+void wm_ui_ble_monitor_demo(void);
+
+/* Stop the monitor, drop any link and power BLE down. */
+void wm_ui_ble_power_off_demo(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __WM_UI_TCP__H__ */
+#endif /* __WM_UI_BLE__H__ */

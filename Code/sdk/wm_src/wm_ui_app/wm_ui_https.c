@@ -4,7 +4,7 @@
   * @author  Walnut Medical
   * @brief   Common Gateway (WEGW) reference application - HTTPS demos.
   *
-  *          Four menu handlers covering the sdk_https_* API:
+  *          Four menu handlers covering the wm_sdk_https_* API:
   *
   *            GET       a JSON endpoint, synchronously
   *            POST      a JSON body with an API-key header
@@ -22,7 +22,7 @@
   *          client id and client secret are compiled into the image in clear.
   *          They are bench credentials: rotate them before this reaches a
   *          fleet, and take them from provisioned storage rather than from a
-  *          literal (see sdk_storage.h) in shipping firmware.
+  *          literal (see wm_sdk_storage.h) in shipping firmware.
   *
   * Copyright (c) 2026 Walnut Medical
   * All rights reserved.
@@ -72,7 +72,7 @@
 #define WM_HTTPS_MON_STACK      (1024 * 12)
 
 /* One ranged request per chunk, sized like a flash write rather than to fill
- * the session buffer - it stays under SDK_HTTPS_RESP_BUF_SIZE so each chunk
+ * the session buffer - it stays under WM_SDK_HTTPS_RESP_BUF_SIZE so each chunk
  * completes in a single pass. */
 #define WM_HTTPS_CHUNK          (2048u)
 
@@ -90,7 +90,7 @@
 ** close the gap - shipping firmware should not leave a download unverified.
 **
 ** To use the anchor provisioned on the unit instead, read it with
-** sdk_storage_cred_read(SDK_STORAGE_CRED_ROOT_CA, ...) into a buffer that
+** wm_sdk_storage_cred_read(WM_SDK_STORAGE_CRED_ROOT_CA, ...) into a buffer that
 ** outlives the session and pass that below - but only for a host that chains to
 ** it, or verification fails and takes the handshake with it.
 ******************************************************************************/
@@ -110,12 +110,12 @@ static BOOL wm_https_open(UINT32 idx, const char *url, const char *ca)
 {
     wm_printf("tls: server verification %s\r\n", (ca != NULL) ? "on" : "OFF");
 
-    if (sdk_https_configure_ssl(idx, ca, NULL, NULL) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_configure_ssl(idx, ca, NULL, NULL) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("configure_ssl failed\r\n");
         return FALSE;
     }
-    if (sdk_https_set_params(idx, url, WM_HTTPS_TIMEOUT) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_set_params(idx, url, WM_HTTPS_TIMEOUT) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("set_params failed (a request may still be in flight)\r\n");
         return FALSE;
@@ -129,18 +129,18 @@ static BOOL wm_https_open(UINT32 idx, const char *url, const char *ca)
 static void wm_https_explain(UINT32 idx, const char *what)
 {
     wm_printf("%s failed: http=%ld err=%ld\r\n", what,
-              (long)sdk_https_get_status_code(idx),
-              (long)sdk_https_get_last_error(idx));
+              (long)wm_sdk_https_get_status_code(idx),
+              (long)wm_sdk_https_get_last_error(idx));
     wm_printf("(err -1 connect/TLS, -2 closed by peer, -4 protocol, "
               "-5 DNS, -6 bad URL, -7 out of memory)\r\n");
 }
 
 /* The exchange result, the server's verdict on it, and the raw client code. */
-static void wm_https_report(UINT32 idx, SdkResult rc)
+static void wm_https_report(UINT32 idx, wm_SdkResult rc)
 {
     wm_printf("rc=%ld http=%ld err=%ld\r\n", (long)rc,
-              (long)sdk_https_get_status_code(idx),
-              (long)sdk_https_get_last_error(idx));
+              (long)wm_sdk_https_get_status_code(idx),
+              (long)wm_sdk_https_get_last_error(idx));
 }
 
 /* Read the body to the end, previewing the first WM_HTTPS_PRINT_MAX bytes and
@@ -152,7 +152,7 @@ static void wm_https_drain(UINT32 idx)
 
     while (1)
     {
-        if (sdk_https_read(idx, buf, sizeof(buf) - 1, &n) != SDK_RESULT_SUCCESS)
+        if (wm_sdk_https_read(idx, buf, sizeof(buf) - 1, &n) != WM_SDK_RESULT_SUCCESS)
         {
             wm_printf("\r\n<read failed after %lu bytes>\r\n", (unsigned long)total);
             return;
@@ -178,7 +178,7 @@ static void wm_https_drain(UINT32 idx)
 ******************************************************************************/
 void wm_ui_https_get_demo(void)
 {
-    SdkResult rc;
+    wm_SdkResult rc;
 
     wm_printf("\r\n--- HTTPS: GET (sync) ---\r\n");
     wm_printf("%s\r\n", WM_HTTPS_GET_URL);
@@ -186,7 +186,7 @@ void wm_ui_https_get_demo(void)
     if (!gf_pdp_ready)
         wm_printf("note: no PDP context is up, so this will fail\r\n");
 
-    if (sdk_https_init(SDK_HTTPS_MODE_SYNC, NULL) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_init(WM_SDK_HTTPS_MODE_SYNC, NULL) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("init failed\r\n");
         return;
@@ -194,14 +194,14 @@ void wm_ui_https_get_demo(void)
     if (!wm_https_open(WM_HTTPS_SESSION_SYNC, WM_HTTPS_GET_URL, WM_HTTPS_API_CA))
         return;
 
-    rc = sdk_https_action(WM_HTTPS_SESSION_SYNC, SDK_HTTPS_ACTION_GET);
+    rc = wm_sdk_https_action(WM_HTTPS_SESSION_SYNC, WM_SDK_HTTPS_ACTION_GET);
     wm_https_report(WM_HTTPS_SESSION_SYNC, rc);
-    if (rc == SDK_RESULT_SUCCESS)
+    if (rc == WM_SDK_RESULT_SUCCESS)
         wm_https_drain(WM_HTTPS_SESSION_SYNC);
     else
         wm_https_explain(WM_HTTPS_SESSION_SYNC, "GET");
 
-    sdk_https_terminate(WM_HTTPS_SESSION_SYNC);
+    wm_sdk_https_terminate(WM_HTTPS_SESSION_SYNC);
 }
 
 /*******************************************************************************
@@ -209,10 +209,10 @@ void wm_ui_https_get_demo(void)
 ******************************************************************************/
 void wm_ui_https_post_demo(void)
 {
-    /* Static because sdk_https_set_data() keeps the pointer instead of copying:
+    /* Static because wm_sdk_https_set_data() keeps the pointer instead of copying:
      * the body must outlive the call that sets it. */
     static const char body[] = WM_HTTPS_POST_BODY;
-    SdkResult rc;
+    wm_SdkResult rc;
 
     wm_printf("\r\n--- HTTPS: POST ---\r\n");
     wm_printf("%s\r\n", WM_HTTPS_POST_URL);
@@ -220,7 +220,7 @@ void wm_ui_https_post_demo(void)
     if (!gf_pdp_ready)
         wm_printf("note: no PDP context is up, so this will fail\r\n");
 
-    if (sdk_https_init(SDK_HTTPS_MODE_SYNC, NULL) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_init(WM_SDK_HTTPS_MODE_SYNC, NULL) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("init failed\r\n");
         return;
@@ -228,26 +228,26 @@ void wm_ui_https_post_demo(void)
     if (!wm_https_open(WM_HTTPS_SESSION_SYNC, WM_HTTPS_POST_URL, WM_HTTPS_API_CA))
         return;
 
-    if (sdk_https_set_header(WM_HTTPS_SESSION_SYNC, WM_HTTPS_POST_HEADER) != SDK_RESULT_SUCCESS ||
-        sdk_https_set_content_type(WM_HTTPS_SESSION_SYNC, WM_HTTPS_POST_TYPE) != SDK_RESULT_SUCCESS ||
-        sdk_https_set_data(WM_HTTPS_SESSION_SYNC, body, (UINT32)(sizeof(body) - 1u))
-            != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_set_header(WM_HTTPS_SESSION_SYNC, WM_HTTPS_POST_HEADER) != WM_SDK_RESULT_SUCCESS ||
+        wm_sdk_https_set_content_type(WM_HTTPS_SESSION_SYNC, WM_HTTPS_POST_TYPE) != WM_SDK_RESULT_SUCCESS ||
+        wm_sdk_https_set_data(WM_HTTPS_SESSION_SYNC, body, (UINT32)(sizeof(body) - 1u))
+            != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("request setup failed\r\n");
-        sdk_https_terminate(WM_HTTPS_SESSION_SYNC);
+        wm_sdk_https_terminate(WM_HTTPS_SESSION_SYNC);
         return;
     }
 
     wm_printf("body=%s\r\n", body);
 
-    rc = sdk_https_action(WM_HTTPS_SESSION_SYNC, SDK_HTTPS_ACTION_POST);
+    rc = wm_sdk_https_action(WM_HTTPS_SESSION_SYNC, WM_SDK_HTTPS_ACTION_POST);
     wm_https_report(WM_HTTPS_SESSION_SYNC, rc);
-    if (rc == SDK_RESULT_SUCCESS)
+    if (rc == WM_SDK_RESULT_SUCCESS)
         wm_https_drain(WM_HTTPS_SESSION_SYNC);
     else
         wm_https_explain(WM_HTTPS_SESSION_SYNC, "POST");
 
-    sdk_https_terminate(WM_HTTPS_SESSION_SYNC);
+    wm_sdk_https_terminate(WM_HTTPS_SESSION_SYNC);
 }
 
 /*******************************************************************************
@@ -260,15 +260,15 @@ void wm_ui_https_post_demo(void)
 ******************************************************************************/
 static void wm_https_monitor_task(void *arg)
 {
-    SdkHttpsEvent ev;
+    wm_SdkHttpsEvent ev;
 
     (void)arg;
 
     while (1)
     {
-        if (sdk_msgq_recv(s_https_q, &ev, SC_SUSPEND) != SDK_RESULT_SUCCESS)
+        if (wm_sdk_msgq_recv(s_https_q, &ev, SC_SUSPEND) != WM_SDK_RESULT_SUCCESS)
         {
-            sdk_task_sleep(100);   /* never spin if the receive errors out */
+            wm_sdk_task_sleep(100);   /* never spin if the receive errors out */
             continue;
         }
 
@@ -276,16 +276,16 @@ static void wm_https_monitor_task(void *arg)
                   (unsigned)ev.ssl_index, (long)ev.status, (long)ev.http_code,
                   (unsigned long)ev.length);
 
-        if (ev.status == SDK_RESULT_SUCCESS)
+        if (ev.status == WM_SDK_RESULT_SUCCESS)
             wm_https_drain(ev.ssl_index);
 
-        sdk_https_terminate(ev.ssl_index);
+        wm_sdk_https_terminate(ev.ssl_index);
     }
 }
 
 void wm_ui_https_async_demo(void)
 {
-    SdkResult rc;
+    wm_SdkResult rc;
 
     wm_printf("\r\n--- HTTPS: GET (async) ---\r\n");
     wm_printf("%s\r\n", WM_HTTPS_GET_URL);
@@ -295,7 +295,7 @@ void wm_ui_https_async_demo(void)
 
     if (s_https_q == NULL)
     {
-        s_https_q = sdk_msgq_create("HTTPSEVT", sizeof(SdkHttpsEvent), 4, 0);
+        s_https_q = wm_sdk_msgq_create("HTTPSEVT", sizeof(wm_SdkHttpsEvent), 4, 0);
         if (s_https_q == NULL)
         {
             wm_printf("event queue create failed\r\n");
@@ -305,7 +305,7 @@ void wm_ui_https_async_demo(void)
 
     if (s_https_mon == NULL)
     {
-        s_https_mon = sdk_task_create(wm_https_monitor_task, NULL, "HTTPMON", NULL,
+        s_https_mon = wm_sdk_task_create(wm_https_monitor_task, NULL, "HTTPMON", NULL,
                                       WM_HTTPS_MON_STACK, TP_TIMED_ACTIVITY);
         if (s_https_mon == NULL)
         {
@@ -314,7 +314,7 @@ void wm_ui_https_async_demo(void)
         }
     }
 
-    if (sdk_https_init(SDK_HTTPS_MODE_ASYNC, s_https_q) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_init(WM_SDK_HTTPS_MODE_ASYNC, s_https_q) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("init failed (a request may still be in flight)\r\n");
         return;
@@ -322,7 +322,7 @@ void wm_ui_https_async_demo(void)
     if (!wm_https_open(WM_HTTPS_SESSION_ASYNC, WM_HTTPS_GET_URL, WM_HTTPS_API_CA))
         return;
 
-    rc = sdk_https_action(WM_HTTPS_SESSION_ASYNC, SDK_HTTPS_ACTION_GET);
+    rc = wm_sdk_https_action(WM_HTTPS_SESSION_ASYNC, WM_SDK_HTTPS_ACTION_GET);
     wm_printf("queued -> rc=%ld; the result will print when it arrives\r\n", (long)rc);
 }
 
@@ -345,26 +345,26 @@ void wm_ui_https_download_demo(void)
 
     /* The download calls are synchronous whatever mode is set; selecting sync
      * here just leaves the client where the other demos expect it. */
-    if (sdk_https_init(SDK_HTTPS_MODE_SYNC, NULL) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_https_init(WM_SDK_HTTPS_MODE_SYNC, NULL) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("init failed\r\n");
         return;
     }
-    if (!wm_https_open(SDK_HTTPS_DOWNLOAD_INDEX, WM_HTTPS_FILE_URL, WM_HTTPS_FILE_CA))
+    if (!wm_https_open(WM_SDK_HTTPS_DOWNLOAD_INDEX, WM_HTTPS_FILE_URL, WM_HTTPS_FILE_CA))
         return;
 
     /* Confirms the trust anchor wm_https_open() just set; -1 simply means none
      * was supplied, so the transfer will not authenticate the server. */
-    rc = sdk_https_download_configure_ssl();
+    rc = wm_sdk_https_download_configure_ssl();
     wm_printf("download tls configured -> %d%s\r\n", rc,
               (rc < 0) ? " (no CA supplied; server not authenticated)" : "");
 
-    if (sdk_https_download_get_file_size(&size) != 0 || size == 0u)
+    if (wm_sdk_https_download_get_file_size(&size) != 0 || size == 0u)
     {
-        wm_https_explain(SDK_HTTPS_DOWNLOAD_INDEX, "size query");
+        wm_https_explain(WM_SDK_HTTPS_DOWNLOAD_INDEX, "size query");
         wm_printf("either the server does not support ranges, or the trust "
                   "anchor does not sign it\r\n");
-        sdk_https_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+        wm_sdk_https_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
         return;
     }
     wm_printf("file size = %lu bytes, chunk = %lu\r\n",
@@ -372,13 +372,13 @@ void wm_ui_https_download_demo(void)
 
     /* Start from nothing: the verification hashes whatever is on disk at the
      * path, so a leftover from an earlier run would be hashed instead. */
-    (void)sdk_file_delete(WM_HTTPS_FILE_PATH);
+    (void)wm_sdk_file_delete(WM_HTTPS_FILE_PATH);
 
-    f = sdk_file_open(WM_HTTPS_FILE_PATH, "wb+");
+    f = wm_sdk_file_open(WM_HTTPS_FILE_PATH, "wb+");
     if (f == NULL)
     {
         wm_printf("cannot open %s for writing\r\n", WM_HTTPS_FILE_PATH);
-        sdk_https_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+        wm_sdk_https_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
         return;
     }
 
@@ -388,14 +388,14 @@ void wm_ui_https_download_demo(void)
     {
         UINT32 want = ((size - off) < sizeof(chunk)) ? (size - off) : (UINT32)sizeof(chunk);
 
-        if (sdk_https_download_read_chunk(off, want, chunk, &n) != 0 || n == 0u)
+        if (wm_sdk_https_download_read_chunk(off, want, chunk, &n) != 0 || n == 0u)
         {
             wm_printf("chunk at offset %lu ", (unsigned long)off);
-            wm_https_explain(SDK_HTTPS_DOWNLOAD_INDEX, "read");
+            wm_https_explain(WM_SDK_HTTPS_DOWNLOAD_INDEX, "read");
             break;
         }
 
-        if (sdk_file_write(f, chunk, n, &written) != SDK_RESULT_SUCCESS || written != n)
+        if (wm_sdk_file_write(f, chunk, n, &written) != WM_SDK_RESULT_SUCCESS || written != n)
         {
             wm_printf("write failed at offset %lu (%lu of %lu bytes)\r\n",
                       (unsigned long)off, (unsigned long)written, (unsigned long)n);
@@ -408,9 +408,9 @@ void wm_ui_https_download_demo(void)
 
     complete = (off == size) ? TRUE : FALSE;
 
-    sdk_file_sync(f);
-    sdk_file_close(f);
-    sdk_https_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+    wm_sdk_file_sync(f);
+    wm_sdk_file_close(f);
+    wm_sdk_https_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
 
     if (!complete)
     {

@@ -4,7 +4,7 @@
   * @author  Walnut Medical
   * @brief   Common Gateway (WEGW) reference application.
   *
-  *          Example application demonstrating the Common Gateway SDK (sdk_*)
+  *          Example application demonstrating the Common Gateway SDK (wm_sdk_*)
   *          platform-abstraction API. A serial command menu runs one demo per
   *          API section.
   ******************************************************************************
@@ -24,6 +24,7 @@
 #include "wm_ui_tcp.h"     /* TCP demo: event-driven echo exchange           */
 #include "wm_ui_https.h"   /* HTTPS demos: GET, POST, async GET, download    */
 #include "wm_ui_ota.h"     /* OTA/DFOTA demos: version, download, verify, apply */
+#include "wm_ui_ble.h"     /* BLE demos: scan, Autoguard health, fuel probes  */
 
 /*******************************************************************************
 ** Menu helper
@@ -38,7 +39,7 @@ void PrintfOptionMenu(char *options_list[], int array_size)
 }
 
 /*******************************************************************************
-** OS / RTOS demo - exercises the sdk_os API set (WEGW_API_REQUIREMENTS_V0)
+** OS / RTOS demo - exercises the wm_sdk_os API set (WEGW_API_REQUIREMENTS_V0)
 ******************************************************************************/
 #define WM_OS_DEMO_TASK_STACK   (1024 * 4)
 
@@ -51,11 +52,11 @@ static void wm_os_demo_task(void *arg)
     UINT32 ready = 1;
 
     (void)arg;
-    sdk_task_sleep(10);
+    wm_sdk_task_sleep(10);
     if (s_os_demo_mq != NULL)
-        sdk_msgq_send(s_os_demo_mq, &ready, 100);
+        wm_sdk_msgq_send(s_os_demo_mq, &ready, 100);
     while (1)
-        sdk_task_sleep(50);
+        wm_sdk_task_sleep(50);
 }
 
 /*******************************************************************************
@@ -99,11 +100,11 @@ static void wm_urc_monitor_task(void *arg)
     (void)arg;
     while (1)
     {
-        if (sdk_msgq_recv(s_urc_q, &ev, SC_SUSPEND) == SDK_RESULT_SUCCESS)
+        if (wm_sdk_msgq_recv(s_urc_q, &ev, SC_SUSPEND) == WM_SDK_RESULT_SUCCESS)
             wm_printf("[URC] %s (%lu)\r\n",
                       wm_urc_event_name((urcEvent_e)ev), (unsigned long)ev);
         else
-            sdk_task_sleep(100);   /* never spin if the receive errors out */
+            wm_sdk_task_sleep(100);   /* never spin if the receive errors out */
     }
 }
 
@@ -118,7 +119,7 @@ static BOOL s_gps_nmea_on   = FALSE;   /* TRUE while the raw NMEA tap is set  */
 
 /* Integer-only rendering: wm_printf carries no floating-point formatting, so
  * degrees go out as micro-degrees, altitude as cm and speed/course as 0.1 units. */
-static void wm_gps_print_navdata(const char *tag, const SdkGpsNavData *nav)
+static void wm_gps_print_navdata(const char *tag, const wm_SdkGpsNavData *nav)
 {
     wm_printf("%s fix=%u sats=%u lat=%ld lon=%ld (1e-6 deg)\r\n",
               tag, (unsigned)(nav->fix_valid ? 1u : 0u), (unsigned)nav->satellites,
@@ -133,7 +134,7 @@ static void wm_gps_print_navdata(const char *tag, const SdkGpsNavData *nav)
 }
 
 /* One line per epoch, so the callback stays short even at the highest rate. */
-static void wm_gps_demo_fix_cb(const SdkGpsNavData *nav)
+static void wm_gps_demo_fix_cb(const wm_SdkGpsNavData *nav)
 {
     wm_printf("[GPS] fix=%u sats=%u lat=%ld lon=%ld (1e-6 deg) spd=%ld (0.1 km/h) %02u:%02u:%02u\r\n",
               (unsigned)(nav->fix_valid ? 1u : 0u), (unsigned)nav->satellites,
@@ -201,6 +202,11 @@ void sTask_WM_UIProcesser(void *arg)
         "32. SYSTEM",
         "33. LOG",
         "34. MQTT: Connect + stream raw NMEA (toggle)",
+        "35. LED: R/G/B indicator LEDs + blink",
+        "36. BLE: Scan for fuel probes (toggle)",
+        "37. BLE: Read fuel probes + Autoguard health",
+        "38. BLE: Periodic read (toggle)",
+        "39. BLE: Power off",
     };
 
     (void)arg;
@@ -234,41 +240,41 @@ void sTask_WM_UIProcesser(void *arg)
         case WM_DEMO_NETWORK:
         {
             UINT32          cfun = 0, ctzu = 0;
-            SdkNetRegStatus creg = SDK_NET_REG_UNKNOWN, cgreg = SDK_NET_REG_UNKNOWN;
-            SdkNetAttStatus cgatt = SDK_NET_DETACHED;
+            wm_SdkNetRegStatus creg = WM_SDK_NET_REG_UNKNOWN, cgreg = WM_SDK_NET_REG_UNKNOWN;
+            wm_SdkNetAttStatus cgatt = WM_SDK_NET_DETACHED;
             UINT8           pin = 1;
-            SdkIpAddress    ip;
-            SdkNetworkGpsRadioInfo radio;
-            SdkNetworkTime  t;
+            wm_SdkIpAddress    ip;
+            wm_SdkNetworkGpsRadioInfo radio;
+            wm_SdkNetworkTime  t;
 
             wm_printf("\r\n--- NETWORK ---\r\n");
 
-            if (sdk_network_get_cfun(&cfun) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_cfun(&cfun) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("cfun=%lu\r\n", (unsigned long)cfun);
-            if (sdk_network_get_creg(&creg) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_creg(&creg) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("creg=%d\r\n", (int)creg);
-            if (sdk_network_get_cgreg(&cgreg) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_cgreg(&cgreg) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("cgreg=%d\r\n", (int)cgreg);
-            if (sdk_network_get_cgatt(&cgatt) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_cgatt(&cgatt) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("cgatt=%d\r\n", (int)cgatt);
             wm_printf("net_status=%s\r\n",
-                      (sdk_network_get_network_status() == SDK_RESULT_SUCCESS) ? "up" : "down");
-            if (sdk_network_get_sim_pin_status(&pin) == SDK_RESULT_SUCCESS)
+                      (wm_sdk_network_get_network_status() == WM_SDK_RESULT_SUCCESS) ? "up" : "down");
+            if (wm_sdk_network_get_sim_pin_status(&pin) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("pin_status=%u\r\n", (unsigned)pin);
-            if (sdk_network_get_ip_address(1, &ip) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_ip_address(1, &ip) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("ip v4=%s v6=%s\r\n", ip.ipv4, ip.ipv6);
             else
                 wm_printf("ip: not available\r\n");
-            if (sdk_network_get_gps_radio_info(&radio) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_gps_radio_info(&radio) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("radio csq=%d rsrp=%d rsrq=%d mcc=%d mnc=%d lac=%d cell=%d valid=%d\r\n",
                           radio.csq, radio.rsrp, radio.rsrq, radio.mcc, radio.mnc,
                           radio.lac, radio.cell_id, (int)radio.valid);
-            if (sdk_network_get_time(&t) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_time(&t) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("time=%04u-%02u-%02u %02u:%02u:%02u tz=%d\r\n",
                           (unsigned)t.year, (unsigned)t.month, (unsigned)t.day,
                           (unsigned)t.hour, (unsigned)t.minute, (unsigned)t.second,
                           (int)t.tz_quarter_hours);
-            if (sdk_network_get_ctzu(&ctzu) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_network_get_ctzu(&ctzu) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("ctzu=%lu\r\n", (unsigned long)ctzu);
             break;
         }
@@ -276,16 +282,16 @@ void sTask_WM_UIProcesser(void *arg)
         /* -------------------------------------------------------------------- SIM */
         case WM_DEMO_SIM:
         {
-            SdkSimStatus st = SDK_SIM_ERROR;
+            wm_SdkSimStatus st = WM_SDK_SIM_ERROR;
             UINT8        pin = 1;
             char         iccid[24] = {0};
 
             wm_printf("\r\n--- SIM ---\r\n");
-            if (sdk_sim_get_status(&st) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_sim_get_status(&st) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("status=%d\r\n", (int)st);
-            if (sdk_sim_get_pin_status(&pin) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_sim_get_pin_status(&pin) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("pin_status=%u\r\n", (unsigned)pin);
-            if (sdk_sim_get_iccid(iccid, sizeof(iccid)) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_sim_get_iccid(iccid, sizeof(iccid)) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("iccid=%s\r\n", iccid);
             else
                 wm_printf("iccid read failed\r\n");
@@ -301,26 +307,26 @@ void sTask_WM_UIProcesser(void *arg)
 
             /* Customer creates the receive queue here (once). */
             if (s_sms_q == NULL)
-                s_sms_q = sdk_msgq_create("smsq", sizeof(SdkSmsMessage), 15u, 0);
+                s_sms_q = wm_sdk_msgq_create("smsq", sizeof(wm_SdkSmsMessage), 15u, 0);
             if (s_sms_q == NULL)
             {
                 wm_printf("SMS queue create failed (needs %lu bytes: 15 x %u-byte msg)\r\n",
-                          (unsigned long)(sizeof(SdkSmsMessage) * 15u),
-                          (unsigned)sizeof(SdkSmsMessage));
+                          (unsigned long)(sizeof(wm_SdkSmsMessage) * 15u),
+                          (unsigned)sizeof(wm_SdkSmsMessage));
                 break;
             }
 
             /* Attach the queue as the incoming-SMS route (poll remembers it)
              * BEFORE bringing SMS up, so no arrival is missed once +CMTI is on. */
-            sdk_sms_msgq_poll(s_sms_q, &pending);
+            wm_sdk_sms_msgq_poll(s_sms_q, &pending);
 
             /* Bring up the SMS subsystem + register the incoming hook. */
-            sdk_sms_init();
+            wm_sdk_sms_init();
 
             /* Apply text mode, GSM charset, new-message indication. */
-            sdk_sms_set_format(SDK_SMS_FORMAT_TEXT);
-            sdk_sms_set_charset(SDK_SMS_CHARSET_GSM);
-            //sdk_sms_set_new_msg_ind(2, 1, 0, 0, 0); // Demo use
+            wm_sdk_sms_set_format(WM_SDK_SMS_FORMAT_TEXT);
+            wm_sdk_sms_set_charset(WM_SDK_SMS_CHARSET_GSM);
+            //wm_sdk_sms_set_new_msg_ind(2, 1, 0, 0, 0); // Demo use
 
             wm_printf("SMS configured (text/GSM), queue attached (pending=%lu)\r\n",
                       (unsigned long)pending);
@@ -336,7 +342,7 @@ void sTask_WM_UIProcesser(void *arg)
             wm_printf("\r\n--- SMS: Storage status ---\r\n");
 
             /* Occupancy of the active SMS storage (name + used/total slots). */
-            if (sdk_sms_get_storage_status(store, sizeof(store), &used, &total) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_sms_get_storage_status(store, sizeof(store), &used, &total) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("storage %s: %lu/%lu used\r\n", store,
                           (unsigned long)used, (unsigned long)total);
             else
@@ -347,16 +353,16 @@ void sTask_WM_UIProcesser(void *arg)
         /* --------------------------------------------------------- SMS: Send */
         case WM_DEMO_SMS_SEND:
         {
-            const char *sms_dest_number = "9952929341";
+            const char *sms_dest_number = "7814304806";
             const char *sms_body        = "WEGW Common Gateway SMS demo";
-            SdkResult   sr;
+            wm_SdkResult   sr;
 
             wm_printf("\r\n--- SMS: Send ---\r\n");
 
             /* Blocks until the network accepts the message or the attempt fails. */
-            sr = sdk_sms_send(sms_dest_number, sms_body);
+            sr = wm_sdk_sms_send(sms_dest_number, sms_body);
             wm_printf("send \"%s\" to %s -> %s\r\n", sms_body, sms_dest_number,
-                      (sr == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                      (sr == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
             break;
         }
 
@@ -374,10 +380,10 @@ void sTask_WM_UIProcesser(void *arg)
             }
 
             /* Read a stored message; the result (and text on success) is
-             * delivered to the queue as an SdkSmsMessage. Drain it with the
+             * delivered to the queue as an wm_SdkSmsMessage. Drain it with the
              * "Poll + drain queue" menu option. */
             wm_printf("read index %lu -> %s\r\n", (unsigned long)sms_read_index,
-                      (sdk_sms_read(SDK_SMS_STORAGE_SM, sms_read_index, s_sms_q) == SDK_RESULT_SUCCESS)
+                      (wm_sdk_sms_read(WM_SDK_SMS_STORAGE_SM, sms_read_index, s_sms_q) == WM_SDK_RESULT_SUCCESS)
                           ? "ok" : "none/fail");
             wm_printf("(result delivered async; run \"Poll + drain queue\" to see it)\r\n");
             break;
@@ -387,7 +393,7 @@ void sTask_WM_UIProcesser(void *arg)
         case WM_DEMO_SMS_DELETE:
         {
             const UINT32 sms_del_index = 1u;   /* first stored message slot */
-            SdkResult    sr;
+            wm_SdkResult    sr;
 
             wm_printf("\r\n--- SMS: Delete ---\r\n");
 
@@ -398,11 +404,11 @@ void sTask_WM_UIProcesser(void *arg)
             }
 
             /* Delete one stored message by index. The outcome is also posted to
-             * the queue as an SdkSmsMessage (SDK_SMS_EVT_DELETE_RESULT) - drain
+             * the queue as an wm_SdkSmsMessage (WM_SDK_SMS_EVT_DELETE_RESULT) - drain
              * it with the "Poll + drain queue" menu option. */
-            sr = sdk_sms_delete(sms_del_index, s_sms_q);
+            sr = wm_sdk_sms_delete(sms_del_index, s_sms_q);
             wm_printf("delete index %lu -> %s\r\n", (unsigned long)sms_del_index,
-                      (sr == SDK_RESULT_SUCCESS) ? "ok" : "none/fail");
+                      (sr == WM_SDK_RESULT_SUCCESS) ? "ok" : "none/fail");
             break;
         }
 
@@ -411,7 +417,7 @@ void sTask_WM_UIProcesser(void *arg)
         {
             UINT32    used = 0, total = 0;
             char      store[12] = {0};
-            SdkResult sr;
+            wm_SdkResult sr;
 
             wm_printf("\r\n--- SMS: Delete all ---\r\n");
 
@@ -422,13 +428,13 @@ void sTask_WM_UIProcesser(void *arg)
             }
 
             /* Wipe the whole store; the result is posted to the queue with
-             * index -1 (SDK_SMS_EVT_DELETE_RESULT). */
-            sr = sdk_sms_delete_all(s_sms_q);
+             * index -1 (WM_SDK_SMS_EVT_DELETE_RESULT). */
+            sr = wm_sdk_sms_delete_all(s_sms_q);
             wm_printf("delete all -> %s\r\n",
-                      (sr == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                      (sr == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
 
             /* Confirm the store is empty afterwards. */
-            if (sdk_sms_get_storage_status(store, sizeof(store), &used, &total) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_sms_get_storage_status(store, sizeof(store), &used, &total) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("storage %s: %lu/%lu used\r\n", store,
                           (unsigned long)used, (unsigned long)total);
             break;
@@ -437,7 +443,7 @@ void sTask_WM_UIProcesser(void *arg)
         /* ---------------------------------------------- SMS: Poll + drain queue */
         case WM_DEMO_SMS_DRAIN:
         {
-            SdkSmsMessage m;
+            wm_SdkSmsMessage m;
             UINT32        pending = 0;
             int           drained = 0;
 
@@ -450,21 +456,21 @@ void sTask_WM_UIProcesser(void *arg)
             }
 
             /* How many events are pending right now. */
-            if (sdk_sms_msgq_poll(s_sms_q, &pending) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_sms_msgq_poll(s_sms_q, &pending) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("pending=%lu\r\n", (unsigned long)pending);
 
             /* Drain and print every queued event (read results + async incoming).
              * Each message's text is heap-owned - release it with
-             * sdk_sms_msg_free() after use. */
-            while (sdk_msgq_recv(s_sms_q, &m, 0) == SDK_RESULT_SUCCESS)
+             * wm_sdk_sms_msg_free() after use. */
+            while (wm_sdk_msgq_recv(s_sms_q, &m, 0) == WM_SDK_RESULT_SUCCESS)
             {
-                const char *kind = (m.type == SDK_SMS_EVT_INCOMING)    ? "INCOMING" :
-                                   (m.type == SDK_SMS_EVT_READ_RESULT) ? "READ"     : "DELETE";
+                const char *kind = (m.type == WM_SDK_SMS_EVT_INCOMING)    ? "INCOMING" :
+                                   (m.type == WM_SDK_SMS_EVT_READ_RESULT) ? "READ"     : "DELETE";
                 wm_printf("[SMS %s] idx=%ld status=%d\r\n",
                           kind, (long)m.index, (int)m.status);
                 if (m.text != NULL)
                     wm_printf("  text: %s\r\n", m.text);
-                sdk_sms_msg_free(&m);
+                wm_sdk_sms_msg_free(&m);
                 drained++;
             }
             if (drained == 0)
@@ -475,15 +481,15 @@ void sTask_WM_UIProcesser(void *arg)
         /* ----------------------------------------------------------- GPS: Configure */
         case WM_DEMO_GPS_CONFIG:
         {
-            const UINT32 gps_mode      = SDK_GPS_SYS_GPS | SDK_GPS_SYS_GLO | SDK_GPS_SYS_GAL;
+            const UINT32 gps_mode      = WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_GLO | WM_SDK_GPS_SYS_GAL;
             const UINT32 gps_start_hot = 0u;   /* 0=HOT, 1=WARM, 2=COLD          */
             const UINT32 gps_out_port  = 0u;   /* 0=serial port, 1=URC           */
-            const UINT32 gps_rate_hz   = 1u;   /* only 1/5/10/20 Hz are accepted */
+            const UINT32 gps_rate_hz   = 1u;   /* see wm_sdk_gps_set_nmea_rate()    */
             UINT8        power         = 0;
 
             wm_printf("\r\n--- GPS: Configure ---\r\n");
 
-            if (sdk_gps_get_power_status(&power) != SDK_RESULT_SUCCESS)
+            if (wm_sdk_gps_get_power_status(&power) != WM_SDK_RESULT_SUCCESS)
             {
                 wm_printf("GPS not initialised (WM_GPS_SUPPORT off or board not validated?)\r\n");
                 break;
@@ -491,25 +497,25 @@ void sTask_WM_UIProcesser(void *arg)
 
             /* One restart either way: powering on already resets the receiver. */
             if (power == 0u)
-                wm_printf("power on -> rc=%ld\r\n", (long)sdk_gps_set_power_status(1));
+                wm_printf("power on -> rc=%ld\r\n", (long)wm_sdk_gps_set_power_status(1));
             else
                 wm_printf("hot start -> rc=%ld\r\n",
-                          (long)sdk_gps_start_mode(gps_start_hot));
-            sdk_task_sleep(500);   /* let the receiver finish rebooting */
+                          (long)wm_sdk_gps_start_mode(gps_start_hot));
+            wm_sdk_task_sleep(500);   /* let the receiver finish rebooting */
 
             /* Configure after the restart: it comes back up on its saved
              * settings, so anything applied before would be discarded. */
             wm_printf("mode GPS|GLONASS|Galileo -> rc=%ld\r\n",
-                      (long)sdk_gps_set_mode(gps_mode));
+                      (long)wm_sdk_gps_set_mode(gps_mode));
             /* Rate last: enabling output re-applies the receiver default rate. */
             wm_printf("nmea output -> rc=%ld\r\n",
-                      (long)sdk_gps_enable_nmea_output(gps_out_port));
+                      (long)wm_sdk_gps_enable_nmea_output(gps_out_port));
             wm_printf("nmea rate %lu Hz -> rc=%ld\r\n", (unsigned long)gps_rate_hz,
-                      (long)sdk_gps_set_nmea_rate(gps_rate_hz));
+                      (long)wm_sdk_gps_set_nmea_rate(gps_rate_hz));
 
-            /* sdk_gps_set_gnss_info_period / _open_agps_service /
+            /* wm_sdk_gps_set_gnss_info_period / _open_agps_service /
              * _set_ap_flash_hot_start are not features of this receiver
-             * (SDK_RESULT_NOT_SUPPORTED), so the demo does not call them. */
+             * (WM_SDK_RESULT_NOT_SUPPORTED), so the demo does not call them. */
 
             wm_printf("(run 'GPS: Stream fixes' to print every epoch)\r\n");
             break;
@@ -518,20 +524,20 @@ void sTask_WM_UIProcesser(void *arg)
         /* ------------------------------------------------------------ GPS: Read fix */
         case WM_DEMO_GPS_FIX:
         {
-            SdkGpsNavData nav = {0};
-            SdkResult     sr;
+            wm_SdkGpsNavData nav = {0};
+            wm_SdkResult     sr;
             UINT8         power = 0;
 
             wm_printf("\r\n--- GPS: Read fix ---\r\n");
 
             /* A fix survives a power off, so show the power state next to it. */
-            if (sdk_gps_get_power_status(&power) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_gps_get_power_status(&power) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("power=%u\r\n", (unsigned)power);
 
-            sr = sdk_gps_get_navdata(&nav);
-            if (sr == SDK_RESULT_SUCCESS)
+            sr = wm_sdk_gps_get_navdata(&nav);
+            if (sr == WM_SDK_RESULT_SUCCESS)
                 wm_gps_print_navdata("fix", &nav);
-            else if (sr == SDK_RESULT_BUSY)
+            else if (sr == WM_SDK_RESULT_BUSY)
             {
                 wm_printf("no valid fix yet (acquiring)\r\n");
                 wm_gps_print_navdata("last", &nav);
@@ -544,13 +550,13 @@ void sTask_WM_UIProcesser(void *arg)
         /* -------------------------------------------------------- GPS: Stream fixes */
         case WM_DEMO_GPS_STREAM:
         {
-            SdkResult sr;
+            wm_SdkResult sr;
 
             wm_printf("\r\n--- GPS: Stream fixes ---\r\n");
 
             /* Register the callback to start, clear it to stop. */
-            sr = sdk_gps_set_fix_callback(s_gps_stream_on ? NULL : wm_gps_demo_fix_cb);
-            if (sr != SDK_RESULT_SUCCESS)
+            sr = wm_sdk_gps_set_fix_callback(s_gps_stream_on ? NULL : wm_gps_demo_fix_cb);
+            if (sr != WM_SDK_RESULT_SUCCESS)
             {
                 wm_printf("GPS not initialised (WM_GPS_SUPPORT off or board not validated?)\r\n");
                 break;
@@ -566,13 +572,13 @@ void sTask_WM_UIProcesser(void *arg)
         /* ----------------------------------------------------- GPS: Stream raw NMEA */
         case WM_DEMO_GPS_NMEA:
         {
-            SdkResult sr;
+            wm_SdkResult sr;
 
             wm_printf("\r\n--- GPS: Stream raw NMEA ---\r\n");
 
             /* Independent of the fix stream: both can run at the same time. */
-            sr = sdk_gps_set_nmea_callback(s_gps_nmea_on ? NULL : wm_gps_demo_nmea_cb);
-            if (sr != SDK_RESULT_SUCCESS)
+            sr = wm_sdk_gps_set_nmea_callback(s_gps_nmea_on ? NULL : wm_gps_demo_nmea_cb);
+            if (sr != WM_SDK_RESULT_SUCCESS)
             {
                 wm_printf("GPS not initialised (WM_GPS_SUPPORT off or board not validated?)\r\n");
                 break;
@@ -589,11 +595,11 @@ void sTask_WM_UIProcesser(void *arg)
         case WM_DEMO_GPS_POWER_OFF:
             wm_printf("\r\n--- GPS: Power off ---\r\n");
             wm_printf("fix callback cleared -> rc=%ld\r\n",
-                      (long)sdk_gps_set_fix_callback(NULL));
-            sdk_gps_set_nmea_callback(NULL);
+                      (long)wm_sdk_gps_set_fix_callback(NULL));
+            wm_sdk_gps_set_nmea_callback(NULL);
             s_gps_stream_on = FALSE;
             s_gps_nmea_on   = FALSE;
-            wm_printf("power off -> rc=%ld\r\n", (long)sdk_gps_set_power_status(0));
+            wm_printf("power off -> rc=%ld\r\n", (long)wm_sdk_gps_set_power_status(0));
 
             /* 'GPS: Read fix' still reports the last fix while powered down. */
             wm_printf("(re-run 'GPS: Configure' to power the receiver back up)\r\n");
@@ -655,36 +661,36 @@ void sTask_WM_UIProcesser(void *arg)
 
             /* mkdir */
             wm_printf("mkdir %s -> %s\r\n", dir,
-                      (sdk_file_mkdir(dir) == SDK_RESULT_SUCCESS) ? "ok" : "fail/exists");
+                      (wm_sdk_file_mkdir(dir) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail/exists");
 
             /* open (write) -> write -> close */
-            f = sdk_file_open(path, "wb+");
+            f = wm_sdk_file_open(path, "wb+");
             if (f == NULL)
             {
                 wm_printf("open(w) failed\r\n");
                 break;
             }
-            if (sdk_file_write(f, text, (UINT32)strlen(text), &n) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_file_write(f, text, (UINT32)strlen(text), &n) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("wrote %lu bytes\r\n", (unsigned long)n);
             else
                 wm_printf("write failed\r\n");
-            sdk_file_close(f);
+            wm_sdk_file_close(f);
 
             /* exists */
             wm_printf("exists=%s\r\n",
-                      (sdk_file_exists(path) == SDK_RESULT_SUCCESS) ? "yes" : "no");
+                      (wm_sdk_file_exists(path) == WM_SDK_RESULT_SUCCESS) ? "yes" : "no");
 
             /* open (read) -> size -> seek(0) -> read -> close */
-            f = sdk_file_open(path, "rb");
+            f = wm_sdk_file_open(path, "rb");
             if (f != NULL)
             {
-                if (sdk_file_get_size(f, &size) == SDK_RESULT_SUCCESS)
+                if (wm_sdk_file_get_size(f, &size) == WM_SDK_RESULT_SUCCESS)
                     wm_printf("size=%lu\r\n", (unsigned long)size);
 
-                sdk_file_seek(f, 0, 0);   /* SEEK_SET */
+                wm_sdk_file_seek(f, 0, 0);   /* SEEK_SET */
 
                 n = 0;
-                if (sdk_file_read(f, buf, sizeof(buf) - 1, &n) == SDK_RESULT_SUCCESS)
+                if (wm_sdk_file_read(f, buf, sizeof(buf) - 1, &n) == WM_SDK_RESULT_SUCCESS)
                 {
                     buf[n] = '\0';
                     wm_printf("read %lu bytes: %s\r\n", (unsigned long)n, buf);
@@ -693,7 +699,7 @@ void sTask_WM_UIProcesser(void *arg)
                 {
                     wm_printf("read failed\r\n");
                 }
-                sdk_file_close(f);
+                wm_sdk_file_close(f);
             }
             else
             {
@@ -702,9 +708,9 @@ void sTask_WM_UIProcesser(void *arg)
 
             /* rename -> delete */
             wm_printf("rename -> %s\r\n",
-                      (sdk_file_rename(path, path2) == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                      (wm_sdk_file_rename(path, path2) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
             wm_printf("delete -> %s\r\n",
-                      (sdk_file_delete(path2) == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                      (wm_sdk_file_delete(path2) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
             break;
         }
 
@@ -714,25 +720,25 @@ void sTask_WM_UIProcesser(void *arg)
             /* Credential write/read round-trip on the client-cert slot. The
              * original value is saved first and restored at the end so the
              * device's provisioned credential is left unchanged. */
-            const SdkStorageCredential cred = SDK_STORAGE_CRED_CLIENT_CERT;
+            const wm_SdkStorageCredential cred = WM_SDK_STORAGE_CRED_CLIENT_CERT;
             const char *test = "WEGW-STORAGE-DEMO-CREDENTIAL";
-            static char backup[SDK_STORAGE_CRED_MAX_SIZE];
-            static char readback[SDK_STORAGE_CRED_MAX_SIZE];
+            static char backup[WM_SDK_STORAGE_CRED_MAX_SIZE];
+            static char readback[WM_SDK_STORAGE_CRED_MAX_SIZE];
             BOOL have_backup;
 
             wm_printf("\r\n--- STORAGE (credentials) ---\r\n");
 
             /* save the current value so it can be restored afterwards */
             memset(backup, 0, sizeof(backup));
-            have_backup = (sdk_storage_cred_read(cred, backup, sizeof(backup)) == SDK_RESULT_SUCCESS);
+            have_backup = (wm_sdk_storage_cred_read(cred, backup, sizeof(backup)) == WM_SDK_RESULT_SUCCESS);
 
             /* write a test value */
             wm_printf("write -> %s\r\n",
-                      (sdk_storage_cred_write(cred, test) == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                      (wm_sdk_storage_cred_write(cred, test) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
 
             /* read it back and compare */
             memset(readback, 0, sizeof(readback));
-            if (sdk_storage_cred_read(cred, readback, sizeof(readback)) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_storage_cred_read(cred, readback, sizeof(readback)) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("read  -> \"%s\" (%s)\r\n", readback,
                           (strcmp(readback, test) == 0) ? "match" : "mismatch");
             else
@@ -741,7 +747,7 @@ void sTask_WM_UIProcesser(void *arg)
             /* restore the original value */
             if (have_backup)
                 wm_printf("restore -> %s\r\n",
-                          (sdk_storage_cred_write(cred, backup) == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                          (wm_sdk_storage_cred_write(cred, backup) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
             break;
         }
 
@@ -758,58 +764,58 @@ void sTask_WM_UIProcesser(void *arg)
             wm_printf("\r\n--- OS / RTOS ---\r\n");
 
             /* Ticks ------------------------------------------------------- */
-            wm_printf("ticks=%lu\r\n", (unsigned long)sdk_get_ticks());
+            wm_printf("ticks=%lu\r\n", (unsigned long)wm_sdk_get_ticks());
 
             /* Heap memory: alloc / free ---------------------------------- */
-            mem = sdk_memory_alloc(64);
+            mem = wm_sdk_memory_alloc(64);
             wm_printf("alloc(64)=%s\r\n", (mem != NULL) ? "ok" : "fail");
             if (mem != NULL)
-                sdk_memory_free(mem);
+                wm_sdk_memory_free(mem);
 
             /* Mutex: create / lock / unlock / delete --------------------- */
-            if (sdk_mutex_create(&mtx, 0) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_mutex_create(&mtx, 0) == WM_SDK_RESULT_SUCCESS)
             {
-                sdk_mutex_lock(mtx, 1000);
-                sdk_mutex_unlock(mtx);
-                sdk_mutex_delete(mtx);
+                wm_sdk_mutex_lock(mtx, 1000);
+                wm_sdk_mutex_unlock(mtx);
+                wm_sdk_mutex_delete(mtx);
                 wm_printf("mutex create/lock/unlock/delete ok\r\n");
             }
 
             /* Message queue: create / send / recv / delete --------------- */
-            mq = sdk_msgq_create("osdemo", sizeof(UINT32), 4, 0);
+            mq = wm_sdk_msgq_create("osdemo", sizeof(UINT32), 4, 0);
             if (mq != NULL)
             {
                 v = 0xABCDu;
-                sdk_msgq_send(mq, &v, 100);
+                wm_sdk_msgq_send(mq, &v, 100);
                 v = 0;
                 wm_printf("msgq recv=%s\r\n",
-                          (sdk_msgq_recv(mq, &v, 100) == SDK_RESULT_SUCCESS) ? "ok" : "timeout");
-                sdk_msgq_delete(mq);
+                          (wm_sdk_msgq_recv(mq, &v, 100) == WM_SDK_RESULT_SUCCESS) ? "ok" : "timeout");
+                wm_sdk_msgq_delete(mq);
             }
 
             /* Task: create / stack info / delete ------------------------- */
-            s_os_demo_mq = sdk_msgq_create("osdemoq", sizeof(UINT32), 2, 0);
-            task = sdk_task_create(wm_os_demo_task, NULL, "OSDEMO", NULL,
+            s_os_demo_mq = wm_sdk_msgq_create("osdemoq", sizeof(UINT32), 2, 0);
+            task = wm_sdk_task_create(wm_os_demo_task, NULL, "OSDEMO", NULL,
                                    WM_OS_DEMO_TASK_STACK, TP_TIMED_ACTIVITY);
             if (task != NULL && s_os_demo_mq != NULL &&
-                sdk_msgq_recv(s_os_demo_mq, &msg, 1000) == SDK_RESULT_SUCCESS)
+                wm_sdk_msgq_recv(s_os_demo_mq, &msg, 1000) == WM_SDK_RESULT_SUCCESS)
             {
                 wm_printf("worker task started\r\n");
-                if (sdk_task_get_stack_info(task, &st_size, &st_used, &st_peak) == SDK_RESULT_SUCCESS)
+                if (wm_sdk_task_get_stack_info(task, &st_size, &st_used, &st_peak) == WM_SDK_RESULT_SUCCESS)
                     wm_printf("worker stack size=%lu used=%lu peak=%lu\r\n",
                               (unsigned long)st_size, (unsigned long)st_used, (unsigned long)st_peak);
-                sdk_task_sleep(20);
+                wm_sdk_task_sleep(20);
                 wm_printf("worker delete=%s\r\n",
-                          (sdk_task_delete(task) == SDK_RESULT_SUCCESS) ? "ok" : "fail");
+                          (wm_sdk_task_delete(task) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
             }
             if (s_os_demo_mq != NULL)
             {
-                sdk_msgq_delete(s_os_demo_mq);
+                wm_sdk_msgq_delete(s_os_demo_mq);
                 s_os_demo_mq = NULL;
             }
 
             /* System statistics ------------------------------------------ */
-            sdk_system_get_stats(&ram_total, &ram_free, &flash_total, &flash_free, &cpu);
+            wm_sdk_system_get_stats(&ram_total, &ram_free, &flash_total, &flash_free, &cpu);
             wm_printf("ram=%lu/%luKB flash=%ld/%ldKB cpu=%u%%\r\n",
                       (unsigned long)ram_free, (unsigned long)ram_total,
                       (long)flash_free, (long)flash_total, (unsigned)cpu);
@@ -822,7 +828,7 @@ void sTask_WM_UIProcesser(void *arg)
             char imei[20] = {0};   /* IMEI is 15 digits + NUL */
 
             wm_printf("\r\n--- DEVICE ---\r\n");
-            if (sdk_device_get_imei(imei, sizeof(imei)) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_device_get_imei(imei, sizeof(imei)) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("imei=%s\r\n", imei);
             else
                 wm_printf("imei read failed\r\n");
@@ -843,7 +849,7 @@ void sTask_WM_UIProcesser(void *arg)
 
             for (i = 0; i < 2u; i++)
             {
-                if (sdk_gpio_set_direction(pins[i], 1) == SDK_RESULT_SUCCESS)
+                if (wm_sdk_gpio_set_direction(pins[i], 1) == WM_SDK_RESULT_SUCCESS)
                     wm_printf("%s LED (pin %lu) -> output\r\n",
                               names[i], (unsigned long)pins[i]);
                 else
@@ -857,23 +863,23 @@ void sTask_WM_UIProcesser(void *arg)
             {
                 for (i = 0; i < 2u; i++)
                 {
-                    sdk_gpio_set_level(pins[i], 1);
+                    wm_sdk_gpio_set_level(pins[i], 1);
                     wm_printf("%s LED ON  (%lu/%lu)\r\n",
                               names[i],
                               (unsigned long)(cycle + 1u), (unsigned long)blink_count);
-                    sdk_task_sleep(blink_ms);
+                    wm_sdk_task_sleep(blink_ms);
 
-                    sdk_gpio_set_level(pins[i], 0);
+                    wm_sdk_gpio_set_level(pins[i], 0);
                     wm_printf("%s LED OFF (%lu/%lu)\r\n",
                               names[i],
                               (unsigned long)(cycle + 1u), (unsigned long)blink_count);
-                    sdk_task_sleep(blink_ms);
+                    wm_sdk_task_sleep(blink_ms);
                 }
             }
 
             for (i = 0; i < 2u; i++)
             {
-                if (sdk_gpio_get_level(pins[i], &level) == SDK_RESULT_SUCCESS)
+                if (wm_sdk_gpio_get_level(pins[i], &level) == WM_SDK_RESULT_SUCCESS)
                     wm_printf("%s LED (pin %lu) level=%lu\r\n",
                               names[i], (unsigned long)pins[i], (unsigned long)level);
             }
@@ -887,17 +893,17 @@ void sTask_WM_UIProcesser(void *arg)
 
             wm_printf("\r\n--- ADC ---\r\n");
 
-            if (sdk_adc_read_vbat_voltage(&vbat) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_adc_read_vbat_voltage(&vbat) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("vbat=%u mV\r\n", (unsigned)vbat);
             else
                 wm_printf("vbat read failed\r\n");
 
-            if (sdk_adc_read_voltage(0, &ch0) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_adc_read_voltage(0, &ch0) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("adc0=%u mV\r\n", (unsigned)ch0);
             else
                 wm_printf("adc0 read failed\r\n");
 
-            if (sdk_adc_read_voltage(1, &ch1) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_adc_read_voltage(1, &ch1) == WM_SDK_RESULT_SUCCESS)
                 wm_printf("adc1=%u mV\r\n", (unsigned)ch1);
             else
                 wm_printf("adc1 read failed\r\n");
@@ -916,13 +922,13 @@ void sTask_WM_UIProcesser(void *arg)
 
             if (s_urc_q == NULL)
             {
-                s_urc_q = sdk_msgq_create("urcq", sizeof(UINT32), 8, 0);
+                s_urc_q = wm_sdk_msgq_create("urcq", sizeof(UINT32), 8, 0);
                 if (s_urc_q == NULL)
                 {
                     wm_printf("URC queue create failed\r\n");
                     break;
                 }
-                sdk_urc_register(s_urc_q, 0xFFFFFFFFu);   /* all event types */
+                wm_sdk_urc_register(s_urc_q, 0xFFFFFFFFu);   /* all event types */
                 wm_printf("URC queue registered (all events)\r\n");
             }
 
@@ -930,7 +936,7 @@ void sTask_WM_UIProcesser(void *arg)
              * so this option returns straight away and the menu stays usable. */
             if (s_urc_mon_task == NULL)
             {
-                s_urc_mon_task = sdk_task_create(wm_urc_monitor_task, NULL, "URCMON", NULL,
+                s_urc_mon_task = wm_sdk_task_create(wm_urc_monitor_task, NULL, "URCMON", NULL,
                                                  WM_URC_MON_TASK_STACK, TP_TIMED_ACTIVITY);
                 wm_printf("URC monitor task %s\r\n",
                           (s_urc_mon_task != NULL) ? "started" : "create failed");
@@ -948,9 +954,9 @@ void sTask_WM_UIProcesser(void *arg)
         {
             UINT32 reason;
             wm_printf("\r\n--- SYSTEM ---\r\n");
-            reason = sdk_get_reset_reason();
+            reason = wm_sdk_get_reset_reason();
             wm_printf("reset_reason=%lu (%s)\r\n",
-                      (unsigned long)reason, sdk_get_reset_reason_string(reason));
+                      (unsigned long)reason, wm_sdk_get_reset_reason_string(reason));
             wm_printf("(reset/reboot/power_off not invoked in demo)\r\n");
             break;
         }
@@ -958,10 +964,10 @@ void sTask_WM_UIProcesser(void *arg)
         /* -------------------------------------------------------------------- LOG */
         case WM_DEMO_LOG:
             wm_printf("\r\n--- LOG ---\r\n");
-            sdk_log_info("info line %d", 1);
-            sdk_log_warning("warning line");
-            sdk_log_error("error line");
-            sdk_debug_print("raw debug print\r\n");
+            wm_sdk_log_info("info line %d", 1);
+            wm_sdk_log_warning("warning line");
+            wm_sdk_log_error("error line");
+            wm_sdk_debug_print("raw debug print\r\n");
             break;
 
         /* ------------------------------------------------------------------- MQTT */
@@ -972,6 +978,81 @@ void sTask_WM_UIProcesser(void *arg)
              * keep that option's state honest. */
             s_gps_nmea_on = FALSE;
             wm_ui_mqtt_demo();
+            break;
+
+        /* -------------------------------------------------------------------- LED */
+        case WM_DEMO_LED:
+        {
+            /* The three indicator LEDs are independent, so a mask with more
+             * than one bit simply lights that many LEDs together. */
+            const UINT32 masks[4]  = { WM_SDK_LED_CH_RED,
+                                       WM_SDK_LED_CH_GREEN,
+                                       WM_SDK_LED_CH_BLUE,
+                                       WM_SDK_LED_CH_ALL };
+            const char  *names[4]  = { "RED", "GREEN", "BLUE", "ALL THREE" };
+            UINT32 i;
+
+            wm_printf("\r\n--- LED ---\r\n");
+            wm_printf("(same LEDs as option 28 GPIO, driven via the SDK here)\r\n");
+
+            /* Each LED on its own, then all three together. */
+            for (i = 0; i < 4u; i++)
+            {
+                if (wm_sdk_led_set_state(masks[i], WM_SDK_LED_BLINK_NONE, 0u)
+                        == WM_SDK_RESULT_SUCCESS)
+                    wm_printf("%s on\r\n", names[i]);
+                else
+                    wm_printf("%s set FAILED\r\n", names[i]);
+                wm_sdk_task_sleep(1000);
+            }
+
+            /* Blinking runs on a timer inside the platform layer, so the call
+             * returns at once - wait out the cycles rather than driving them. */
+            if (wm_sdk_led_set_state(WM_SDK_LED_CH_GREEN, WM_SDK_LED_BLINK_SLOW, 3u)
+                    == WM_SDK_RESULT_SUCCESS)
+                wm_printf("GREEN blink slow x3\r\n");
+            else
+                wm_printf("GREEN blink FAILED\r\n");
+            wm_sdk_task_sleep(3500);
+
+            if (wm_sdk_led_set_state(WM_SDK_LED_CH_RED, WM_SDK_LED_BLINK_FAST, 3u)
+                    == WM_SDK_RESULT_SUCCESS)
+                wm_printf("RED blink fast x3\r\n");
+            else
+                wm_printf("RED blink FAILED\r\n");
+            wm_sdk_task_sleep(2000);
+
+            /* Rejected requests (expect -3 WM_SDK_RESULT_INVALID_PARAM). */
+            wm_printf("bad channel bit -> %ld\r\n",
+                      (long)wm_sdk_led_set_state(0x08u, WM_SDK_LED_BLINK_NONE, 0u));
+            wm_printf("count %lu -> %ld\r\n",
+                      (unsigned long)(WM_SDK_LED_BLINK_COUNT_MAX + 1u),
+                      (long)wm_sdk_led_set_state(WM_SDK_LED_CH_RED, WM_SDK_LED_BLINK_SLOW,
+                                              (UINT8)(WM_SDK_LED_BLINK_COUNT_MAX + 1u)));
+
+            /* Leave the LEDs dark so option 28 can drive the pins directly. */
+            wm_sdk_led_set_state(WM_SDK_LED_CH_NONE, WM_SDK_LED_BLINK_NONE, 0u);
+            wm_printf("all LEDs off\r\n");
+            break;
+        }
+
+        /* -------------------------------------------------------------------- BLE */
+        /* Implemented in wm_ui_ble.c - the BLE demos own a background task and
+         * the peripheral wire formats, so they live in their own file. */
+        case WM_DEMO_BLE_SCAN:
+            wm_ui_ble_scan_demo();
+            break;
+
+        case WM_DEMO_BLE_READ:
+            wm_ui_ble_read_demo();
+            break;
+
+        case WM_DEMO_BLE_MONITOR:
+            wm_ui_ble_monitor_demo();
+            break;
+
+        case WM_DEMO_BLE_POWER_OFF:
+            wm_ui_ble_power_off_demo();
             break;
 
         default:
@@ -989,7 +1070,9 @@ void sTask_WM_UIProcesser(void *arg)
 void WM_Entry_Task_Top_Most(void)
 {
     wm_logger_mode(TRUE);   /* enable log output                     */
-	sdk_gps_set_power_status(0);  /* GPS is off at startup          */
+	wm_sdk_gps_set_power_status(0);  /* GPS is off at startup          */
+    wm_sdk_ble_set_power_status(0);  /* BLE is off at startup - scanning holds
+                                   * off sleep, so the demo powers it on   */
     wm_ui_app_init();       /* create WM_UI_msgq + UIPROC dispatcher */
     wm_ui_dfota_init();     /* MINI FOTA status callback - register at boot */
     RTI_LOG("WEGW Common Gateway app: WM_Entry_Task_Top_Most done");

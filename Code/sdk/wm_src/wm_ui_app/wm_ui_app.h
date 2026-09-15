@@ -19,7 +19,7 @@
 ******************************************************************************/
 #include "wm_global.h"
 #include "wm_extern_fnc.h"
-#include "sdk_api.h"      /* Common Gateway SDK platform-abstraction API (incl. sdk_wm.h) */
+#include "wm_sdk_api.h"      /* Common Gateway SDK platform-abstraction API (incl. wm_sdk_wm.h) */
 
 #ifdef __cplusplus
 extern "C"

@@ -22,7 +22,7 @@
 ** Header Files
 ******************************************************************************/
 #include "wm_global.h"
-#include "sdk_api.h"
+#include "wm_sdk_api.h"
 
 #ifdef __cplusplus
 extern "C"

@@ -8,11 +8,11 @@
   *
   *            versions  read the application and platform SDK version, and
   *                      report what is currently staged
-  *            OTA       whole application update over the sdk_ota_*
+  *            OTA       whole application update over the wm_sdk_ota_*
   *                      file-staging API: prompt for the URL -> download to
   *                      C: -> prompt for SHA-256 -> verify -> arm -> restart
   *            DFOTA     kernel delta patch over MINI FOTA
-  *                      (sdk_ota_mini_dfota_*): prompt for the URL and hand
+  *                      (wm_sdk_ota_mini_dfota_*): prompt for the URL and hand
   *                      it to the module, which fetches and applies it
   *                      itself over HTTP - no local staging or verify
   *
@@ -45,7 +45,7 @@
 ** Set this to wm_cacert when the image host chains to Amazon Root CA 1 (the
 ** anchor this image already carries for the MQTT and API demos). To use the
 ** anchor provisioned on the unit instead, read it into the file-scope buffer
-** below with sdk_storage_cred_read(SDK_STORAGE_CRED_ROOT_CA, ...) and point
+** below with wm_sdk_storage_cred_read(WM_SDK_STORAGE_CRED_ROOT_CA, ...) and point
 ** s_ota_ca at that: the PEM is held by reference for the life of the session,
 ** so it must not be a buffer local to a function.
 ******************************************************************************/
@@ -95,21 +95,21 @@ static SIM_MSG_T wm_ota_prompt(const char *what)
 /* Report whether an image is staged, and how big it is. */
 static void wm_ota_report_staged(UINT32 type)
 {
-    const char *path = sdk_ota_get_image_path(type);
+    const char *path = wm_sdk_ota_get_image_path(type);
     void       *f;
     UINT32      size = 0;
 
-    if (sdk_file_exists(path) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_file_exists(path) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("staged: none at %s\r\n", path);
         return;
     }
 
-    f = sdk_file_open(path, "rb");
+    f = wm_sdk_file_open(path, "rb");
     if (f != NULL)
     {
-        (void)sdk_file_get_size(f, &size);
-        (void)sdk_file_close(f);
+        (void)wm_sdk_file_get_size(f, &size);
+        (void)wm_sdk_file_close(f);
     }
 
     wm_printf("staged: %s (%lu bytes)\r\n", path, (unsigned long)size);
@@ -122,8 +122,8 @@ static INT64 wm_ota_free_kb(void)
     INT64  flash_total = 0, flash_free = 0;
     UINT8  cpu = 0;
 
-    if (sdk_system_get_stats(&ram_total, &ram_free, &flash_total, &flash_free, &cpu)
-            != SDK_RESULT_SUCCESS)
+    if (wm_sdk_system_get_stats(&ram_total, &ram_free, &flash_total, &flash_free, &cpu)
+            != WM_SDK_RESULT_SUCCESS)
         return -1;
 
     return flash_free;
@@ -134,23 +134,23 @@ static BOOL wm_ota_download(UINT32 type, const char *url)
 {
     UINT32    size = 0;
     INT64     free_kb;
-    SdkResult rc;
+    wm_SdkResult rc;
     BOOL      ok = FALSE;
 
-    wm_printf("-> %s\r\n", sdk_ota_get_image_path(type));
+    wm_printf("-> %s\r\n", wm_sdk_ota_get_image_path(type));
 
     if (!gf_pdp_ready)
         wm_printf("note: no PDP context is up, so this will fail\r\n");
 
     /* The download path is synchronous whichever mode is selected; picking sync
      * leaves the HTTPS client where the other demos expect it. */
-    if (sdk_ota_download_init(SDK_HTTPS_MODE_SYNC, NULL) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_ota_download_init(WM_SDK_HTTPS_MODE_SYNC, NULL) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("init failed\r\n");
         return FALSE;
     }
 
-    if (sdk_ota_set_image_type(type) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_ota_set_image_type(type) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("set_image_type failed\r\n");
         return FALSE;
@@ -158,15 +158,15 @@ static BOOL wm_ota_download(UINT32 type, const char *url)
 
     wm_printf("tls: server verification %s\r\n", (s_ota_ca != NULL) ? "on" : "OFF");
 
-    if (sdk_ota_download_configure_ssl(SDK_HTTPS_DOWNLOAD_INDEX, s_ota_ca)
-            != SDK_RESULT_SUCCESS)
+    if (wm_sdk_ota_download_configure_ssl(WM_SDK_HTTPS_DOWNLOAD_INDEX, s_ota_ca)
+            != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("configure_ssl failed\r\n");
         return FALSE;
     }
 
-    if (sdk_ota_download_set_params(SDK_HTTPS_DOWNLOAD_INDEX, url, WM_OTA_TIMEOUT)
-            != SDK_RESULT_SUCCESS)
+    if (wm_sdk_ota_download_set_params(WM_SDK_HTTPS_DOWNLOAD_INDEX, url, WM_OTA_TIMEOUT)
+            != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("set_params failed (is the URL too long?)\r\n");
         return FALSE;
@@ -174,12 +174,12 @@ static BOOL wm_ota_download(UINT32 type, const char *url)
 
     /* Size first, so a transfer is never started against a volume that cannot
      * hold the result. */
-    if (sdk_ota_download_get_file_size(SDK_HTTPS_DOWNLOAD_INDEX, &size)
-            != SDK_RESULT_SUCCESS || size == 0u)
+    if (wm_sdk_ota_download_get_file_size(WM_SDK_HTTPS_DOWNLOAD_INDEX, &size)
+            != WM_SDK_RESULT_SUCCESS || size == 0u)
     {
         wm_printf("size query failed - either the server does not support ranged "
                   "requests, or the trust anchor does not sign it\r\n");
-        (void)sdk_ota_download_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+        (void)wm_sdk_ota_download_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
         return FALSE;
     }
 
@@ -193,15 +193,15 @@ static BOOL wm_ota_download(UINT32 type, const char *url)
     if (free_kb >= 0 && free_kb < (INT64)(size / 1024u))
     {
         wm_printf("not enough free flash to stage this image\r\n");
-        (void)sdk_ota_download_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+        (void)wm_sdk_ota_download_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
         return FALSE;
     }
 
     wm_printf("downloading - this takes minutes for a full image\r\n");
 
-    rc = sdk_ota_download_action(SDK_HTTPS_DOWNLOAD_INDEX);
+    rc = wm_sdk_ota_download_action(WM_SDK_HTTPS_DOWNLOAD_INDEX);
 
-    if (rc == SDK_RESULT_SUCCESS)
+    if (rc == WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("download SUCCESS\r\n");
         ok = TRUE;
@@ -212,7 +212,7 @@ static BOOL wm_ota_download(UINT32 type, const char *url)
         wm_printf("any partial file left staged will not verify\r\n");
     }
 
-    (void)sdk_ota_download_terminate(SDK_HTTPS_DOWNLOAD_INDEX);
+    (void)wm_sdk_ota_download_terminate(WM_SDK_HTTPS_DOWNLOAD_INDEX);
 
     wm_ota_report_staged(type);
     return ok;
@@ -221,27 +221,27 @@ static BOOL wm_ota_download(UINT32 type, const char *url)
 /* Hash the staged image, show the digest, and compare it with @p expected. */
 static BOOL wm_ota_verify(UINT32 type, const char *expected)
 {
-    char      actual[SDK_OTA_SHA256_HEX_LEN + 1] = {0};
-    SdkResult rc;
+    char      actual[WM_SDK_OTA_SHA256_HEX_LEN + 1] = {0};
+    wm_SdkResult rc;
 
-    if (sdk_ota_get_image_hash(type, actual, sizeof(actual)) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_ota_get_image_hash(type, actual, sizeof(actual)) != WM_SDK_RESULT_SUCCESS)
     {
-        wm_printf("could not hash %s\r\n", sdk_ota_get_image_path(type));
+        wm_printf("could not hash %s\r\n", wm_sdk_ota_get_image_path(type));
         return FALSE;
     }
 
     wm_printf("computed = %s\r\n", actual);
     wm_printf("expected = %s\r\n", expected);
 
-    rc = sdk_ota_verify_image(type, expected);
+    rc = wm_sdk_ota_verify_image(type, expected);
 
-    if (rc == SDK_RESULT_SUCCESS)
+    if (rc == WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("SHA256 MATCHES - image verified\r\n");
         return TRUE;
     }
 
-    if (rc == SDK_RESULT_INVALID_PARAM)
+    if (rc == WM_SDK_RESULT_INVALID_PARAM)
         wm_printf("SHA256 not checked: the value entered is not 64 hex chars\r\n");
     else
         wm_printf("SHA256 DOES NOT MATCH\r\n");
@@ -252,10 +252,10 @@ static BOOL wm_ota_verify(UINT32 type, const char *expected)
 /* The APP image update flow: download to C: staging, verify, arm, reboot. */
 static void wm_ota_run_update(void)
 {
-    const UINT32 type = (UINT32)SDK_OTA_IMAGE_APP;
+    const UINT32 type = (UINT32)WM_SDK_OTA_IMAGE_APP;
     SIM_MSG_T msg;
-    char      expected[SDK_OTA_SHA256_HEX_LEN + 1] = {0};
-    SdkResult rc;
+    char      expected[WM_SDK_OTA_SHA256_HEX_LEN + 1] = {0};
+    wm_SdkResult rc;
 
     wm_ota_report_staged(type);
 
@@ -276,10 +276,10 @@ static void wm_ota_run_update(void)
     /* --- 2. Download ----------------------------------------------------- */
     if (!wm_ota_download(type, (const char *)msg.arg3))
     {
-        sdk_memory_free(msg.arg3);
+        wm_sdk_memory_free(msg.arg3);
         return;
     }
-    sdk_memory_free(msg.arg3);
+    wm_sdk_memory_free(msg.arg3);
 
     /* --- 3. Expected digest ---------------------------------------------- */
     msg = wm_ota_prompt("Enter SHA256 of the image file: ");
@@ -289,7 +289,7 @@ static void wm_ota_run_update(void)
         return;
     }
     strncpy(expected, (const char *)msg.arg3, sizeof(expected) - 1);
-    sdk_memory_free(msg.arg3);
+    wm_sdk_memory_free(msg.arg3);
     wm_printf("\r\n");
 
     /* --- 4. Verify ------------------------------------------------------- */
@@ -300,8 +300,8 @@ static void wm_ota_run_update(void)
     }
 
     /* --- 5. Arm ---------------------------------------------------------- */
-    rc = sdk_ota_app_update();
-    if (rc != SDK_RESULT_SUCCESS)
+    rc = wm_sdk_ota_app_update();
+    if (rc != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("APP_OTA FAILED -> rc=%ld (nothing applied, no reboot)\r\n",
                   (long)rc);
@@ -311,9 +311,9 @@ static void wm_ota_run_update(void)
     wm_printf("APP_OTA SUCCESS - rebooting into the update now\r\n");
 
     /* --- 6. Reboot ------------------------------------------------------- */
-    sdk_task_sleep(200);   /* let the console drain before the reset */
+    wm_sdk_task_sleep(200);   /* let the console drain before the reset */
 
-    sdk_ota_app_update_restart();
+    wm_sdk_ota_app_update_restart();
 
     /* Not reached. */
     wm_printf("restart did not take effect\r\n");
@@ -324,22 +324,22 @@ static void wm_ota_run_update(void)
 ******************************************************************************/
 void wm_ui_ota_version_demo(void)
 {
-    char      app[SDK_OTA_VERSION_MAX] = {0};
-    char      sdk[SDK_OTA_VERSION_MAX] = {0};
-    SdkResult rc;
+    char      app[WM_SDK_OTA_VERSION_MAX] = {0};
+    char      sdk[WM_SDK_OTA_VERSION_MAX] = {0};
+    wm_SdkResult rc;
 
     wm_printf("\r\n--- OTA: versions ---\r\n");
 
-    rc = sdk_ota_get_app_version(app, sizeof(app));
+    rc = wm_sdk_ota_get_app_version(app, sizeof(app));
     wm_printf("app version: %s\r\n",
-              (rc == SDK_RESULT_SUCCESS) ? app : "<unavailable>");
+              (rc == WM_SDK_RESULT_SUCCESS) ? app : "<unavailable>");
 
-    rc = sdk_ota_get_sdk_version(sdk, sizeof(sdk));
+    rc = wm_sdk_ota_get_sdk_version(sdk, sizeof(sdk));
     wm_printf("sdk version: %s\r\n",
-              (rc == SDK_RESULT_SUCCESS) ? sdk : "<unavailable>");
+              (rc == WM_SDK_RESULT_SUCCESS) ? sdk : "<unavailable>");
 
     /* MINI FOTA stages no local file, so only the APP image has a path. */
-    wm_ota_report_staged((UINT32)SDK_OTA_IMAGE_APP);
+    wm_ota_report_staged((UINT32)WM_SDK_OTA_IMAGE_APP);
 }
 
 /*******************************************************************************
@@ -367,7 +367,7 @@ static void wm_ui_dfota_status_cb(int status)
 
 void wm_ui_dfota_init(void)
 {
-    (void)sdk_ota_mini_dfota_init(wm_ui_dfota_status_cb);
+    (void)wm_sdk_ota_mini_dfota_init(wm_ui_dfota_status_cb);
 }
 
 void wm_ui_dfota_update_demo(void)
@@ -394,8 +394,8 @@ void wm_ui_dfota_update_demo(void)
     }
     wm_printf("\r\n%s\r\n", (char *)msg.arg3);
 
-    rc = sdk_ota_mini_dfota_start((const char *)msg.arg3);
-    sdk_memory_free(msg.arg3);
+    rc = wm_sdk_ota_mini_dfota_start((const char *)msg.arg3);
+    wm_sdk_memory_free(msg.arg3);
 
     if (rc == WM_MINI_FOTA_OK)
         wm_printf("MINI FOTA request ACCEPTED - running in the background\r\n");

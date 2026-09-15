@@ -57,9 +57,11 @@
 #define WM_MQTT_TOPIC_PUB_LEAF  "gps/nmea"
 #define WM_MQTT_TOPIC_SUB_LEAF  "gps/cmd"
 
-/* Batching. The batch must fit one publish (SDK_MQTT_PAYLOAD_MAX); 1 KB holds a
- * full 1 Hz epoch (typically 6-10 sentences of up to 82 bytes). */
-#define WM_MQTT_NMEA_BATCH_MAX  (1024u)
+/* Batching. The batch must fit one publish (WM_SDK_MQTT_PAYLOAD_MAX); 2 KB holds a
+ * full 1 Hz epoch. A multi-constellation fix sends one GSV set per constellation
+ * and a GSA per satellite in view, so an epoch runs well past the 6-10 sentences
+ * a GPS-only receiver produced - overflow just increments the drop counter. */
+#define WM_MQTT_NMEA_BATCH_MAX  (2048u)
 #define WM_MQTT_NMEA_PUB_MS     (1000u)  /* default interval; 'interval=' cmd  */
 #define WM_MQTT_NMEA_LOCK_MS    (10u)    /* GNSS-task lock wait; drop if busy  */
 #define WM_MQTT_PUB_TASK_STACK  (1024 * 4)
@@ -67,11 +69,11 @@
 /*******************************************************************************
 ** Demo state
 ******************************************************************************/
-/* Built once from the IMEI, then held for the life of the client: sdk_mqtt
+/* Built once from the IMEI, then held for the life of the client: wm_sdk_mqtt
  * keeps the topic string it is given rather than copying it. */
-static char s_client_id[SDK_MQTT_CLIENT_ID_MAX];
-static char s_topic_nmea[SDK_MQTT_TOPIC_MAX];
-static char s_topic_cmd[SDK_MQTT_TOPIC_MAX];
+static char s_client_id[WM_SDK_MQTT_CLIENT_ID_MAX];
+static char s_topic_nmea[WM_SDK_MQTT_TOPIC_MAX];
+static char s_topic_cmd[WM_SDK_MQTT_TOPIC_MAX];
 static BOOL s_ids_ready;
 
 /* Batch filled on the GNSS parser task, drained by "MQTTPUB". */
@@ -100,7 +102,7 @@ static void wm_mqtt_build_ids(void)
 
     /* Fall back to a fixed id so the demo still runs on a unit whose IMEI
      * cannot be read; on a real fleet that would collide, hence the warning. */
-    if (sdk_device_get_imei(imei, sizeof(imei)) != SDK_RESULT_SUCCESS || imei[0] == '\0')
+    if (wm_sdk_device_get_imei(imei, sizeof(imei)) != WM_SDK_RESULT_SUCCESS || imei[0] == '\0')
     {
         wm_printf("IMEI unavailable - using a fixed client id (do not ship this)\r\n");
         strcpy(imei, "000000000000000");
@@ -130,7 +132,7 @@ static void wm_mqtt_nmea_cb(const char *sentence, UINT16 len)
     if (s_nmea_mtx == NULL || len == 0u)
         return;
 
-    if (sdk_mutex_lock(s_nmea_mtx, WM_MQTT_NMEA_LOCK_MS) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_mutex_lock(s_nmea_mtx, WM_MQTT_NMEA_LOCK_MS) != WM_SDK_RESULT_SUCCESS)
     {
         s_nmea_dropped++;
         return;
@@ -150,7 +152,7 @@ static void wm_mqtt_nmea_cb(const char *sentence, UINT16 len)
         s_nmea_dropped++;
     }
 
-    sdk_mutex_unlock(s_nmea_mtx);
+    wm_sdk_mutex_unlock(s_nmea_mtx);
 }
 
 /* Swaps the batch out under the lock, then publishes outside it, so the GNSS
@@ -163,37 +165,37 @@ static void wm_mqtt_nmea_pub_task(void *arg)
     {
         UINT32 len = 0;
 
-        sdk_task_sleep(s_pub_ms);
+        wm_sdk_task_sleep(s_pub_ms);
 
         if (!s_nmea_on)
             continue;
 
-        if (sdk_mutex_lock(s_nmea_mtx, 100) != SDK_RESULT_SUCCESS)
+        if (wm_sdk_mutex_lock(s_nmea_mtx, 100) != WM_SDK_RESULT_SUCCESS)
             continue;
         len = s_nmea_len;
         if (len > 0u)
             memcpy(s_nmea_pub, s_nmea_batch, len);
         s_nmea_len = 0;
-        sdk_mutex_unlock(s_nmea_mtx);
+        wm_sdk_mutex_unlock(s_nmea_mtx);
 
         if (len == 0u)
             continue;
 
         /* Drop the batch rather than hold it: the next epoch is already on its
          * way and a stale position is worth less than a fresh one. */
-        if (!sdk_mqtt_is_connected())
+        if (!wm_sdk_mqtt_is_connected())
         {
             s_nmea_dropped++;
             continue;
         }
 
-        if (sdk_mqtt_publish(s_topic_nmea, s_nmea_pub, len,
-                             SDK_MQTT_QOS0, FALSE) == SDK_RESULT_SUCCESS)
+        if (wm_sdk_mqtt_publish(s_topic_nmea, s_nmea_pub, len,
+                             WM_SDK_MQTT_QOS0, FALSE) == WM_SDK_RESULT_SUCCESS)
             wm_printf("[MQTT] %lu bytes of NMEA -> %s\r\n",
                       (unsigned long)len, s_topic_nmea);
         else
             wm_printf("[MQTT] publish failed rc=%ld\r\n",
-                      (long)sdk_mqtt_last_error());
+                      (long)wm_sdk_mqtt_last_error());
     }
 }
 
@@ -203,10 +205,10 @@ void wm_ui_mqtt_nmea_stream_stop(void)
         return;
 
     s_nmea_on = FALSE;
-    if (sdk_mutex_lock(s_nmea_mtx, 100) == SDK_RESULT_SUCCESS)
+    if (wm_sdk_mutex_lock(s_nmea_mtx, 100) == WM_SDK_RESULT_SUCCESS)
     {
         s_nmea_len = 0;
-        sdk_mutex_unlock(s_nmea_mtx);
+        wm_sdk_mutex_unlock(s_nmea_mtx);
     }
 }
 
@@ -219,14 +221,15 @@ BOOL wm_ui_mqtt_nmea_stream_active(void)
 ** GPS configuration over MQTT (downlink)
 **
 ** Commands are plain "key=value" text, one per message, so they can be sent
-** straight from the AWS IoT console's test client. Each maps onto one sdk_gps_*
+** straight from the AWS IoT console's test client. Each maps onto one wm_sdk_gps_*
 ** configuration call:
 **
 **     power=0|1        receiver power off / on
 **     start=0|1|2      restart: 0 HOT, 1 WARM, 2 COLD
-**     rate=1|5|10|20   NMEA output rate in Hz
-**     mode=<mask>      constellations, OR of SDK_GPS_SYS_* (1 GPS, 4 BDS,
-**                      64 GLONASS, 128 Galileo); e.g. 193 = GPS+GLO+GAL
+**     rate=1|2|4|5     NMEA output rate in Hz
+**     mode=<mask>      constellations, OR of WM_SDK_GPS_SYS_* (1 GPS, 16 BDS,
+**                      128 BDS B1C, 256 GLONASS, 4096 Galileo, 65536 QZSS,
+**                      131072 SBAS); e.g. 4353 = GPS+GLO+GAL
 **     output=0|1       NMEA output destination: 0 serial, 1 URC
 **     stream=0|1       stop / start publishing to the nmea topic
 **     interval=<ms>    publish interval, 250..60000 ms
@@ -245,9 +248,10 @@ static BOOL wm_mqtt_arg_uint(const char *cmd, const char *key, UINT32 *out)
     return TRUE;
 }
 
-/* Apply one command. Runs on the MQTT client's receive task; every call it
- * makes is a short best-effort write to the GNSS UART, so the handler stays
- * brief and never sleeps. */
+/* Apply one command. Runs on the MQTT client's receive task. Each call writes to
+ * the GNSS UART and waits for the receiver to acknowledge, so the handler blocks
+ * for as long as that takes - normally milliseconds, but up to the driver's ACK
+ * timeout if the receiver is unpowered or wedged. */
 static void wm_mqtt_apply_cmd(const char *cmd)
 {
     UINT32 v = 0;
@@ -255,27 +259,27 @@ static void wm_mqtt_apply_cmd(const char *cmd)
     if (wm_mqtt_arg_uint(cmd, "power", &v))
     {
         wm_printf("[CMD] power=%lu -> rc=%ld\r\n",
-                  (unsigned long)v, (long)sdk_gps_set_power_status((UINT8)v));
+                  (unsigned long)v, (long)wm_sdk_gps_set_power_status((UINT8)v));
     }
     else if (wm_mqtt_arg_uint(cmd, "start", &v))
     {
         wm_printf("[CMD] start=%lu -> rc=%ld\r\n",
-                  (unsigned long)v, (long)sdk_gps_start_mode(v));
+                  (unsigned long)v, (long)wm_sdk_gps_start_mode(v));
     }
     else if (wm_mqtt_arg_uint(cmd, "rate", &v))
     {
         wm_printf("[CMD] rate=%lu -> rc=%ld\r\n",
-                  (unsigned long)v, (long)sdk_gps_set_nmea_rate(v));
+                  (unsigned long)v, (long)wm_sdk_gps_set_nmea_rate(v));
     }
     else if (wm_mqtt_arg_uint(cmd, "mode", &v))
     {
         wm_printf("[CMD] mode=0x%lx -> rc=%ld\r\n",
-                  (unsigned long)v, (long)sdk_gps_set_mode(v));
+                  (unsigned long)v, (long)wm_sdk_gps_set_mode(v));
     }
     else if (wm_mqtt_arg_uint(cmd, "output", &v))
     {
         wm_printf("[CMD] output=%lu -> rc=%ld\r\n",
-                  (unsigned long)v, (long)sdk_gps_enable_nmea_output(v));
+                  (unsigned long)v, (long)wm_sdk_gps_enable_nmea_output(v));
     }
     else if (wm_mqtt_arg_uint(cmd, "interval", &v))
     {
@@ -295,7 +299,7 @@ static void wm_mqtt_apply_cmd(const char *cmd)
     {
         if (v == 0u)
         {
-            sdk_gps_set_nmea_callback(NULL);
+            wm_sdk_gps_set_nmea_callback(NULL);
             wm_ui_mqtt_nmea_stream_stop();
             wm_printf("[CMD] stream=0 (stopped)\r\n");
         }
@@ -304,7 +308,7 @@ static void wm_mqtt_apply_cmd(const char *cmd)
             /* The batch mutex and publisher task already exist by the time any
              * command can arrive, because the menu option created them before
              * subscribing. */
-            if (sdk_gps_set_nmea_callback(wm_mqtt_nmea_cb) == SDK_RESULT_SUCCESS)
+            if (wm_sdk_gps_set_nmea_callback(wm_mqtt_nmea_cb) == WM_SDK_RESULT_SUCCESS)
             {
                 s_nmea_on = TRUE;
                 wm_printf("[CMD] stream=1 (started)\r\n");
@@ -328,7 +332,7 @@ static void wm_mqtt_apply_cmd(const char *cmd)
 
 /* Runs on the MQTT client's receive task. The payload is not NUL-terminated and
  * is wiped as soon as this returns, so it is copied out first. */
-static void wm_mqtt_cmd_cb(const SdkMqttMessage *msg)
+static void wm_mqtt_cmd_cb(const wm_SdkMqttMessage *msg)
 {
     char   cmd[64];
     UINT32 n;
@@ -354,26 +358,26 @@ static void wm_mqtt_cmd_cb(const SdkMqttMessage *msg)
 ******************************************************************************/
 static BOOL wm_mqtt_connect(void)
 {
-    SdkMqttConfig cfg;
-    SdkIpAddress  ip;
-    SdkResult     sr;
+    wm_SdkMqttConfig cfg;
+    wm_SdkIpAddress  ip;
+    wm_SdkResult     sr;
     INT32         raw;
 
-    if (sdk_mqtt_is_connected())
+    if (wm_sdk_mqtt_is_connected())
         return TRUE;
 
     /* MQTT rides on the TCP/IP stack, so a PDP context has to be up first.
      * Report it here rather than letting the connect fail obscurely. */
-    if (sdk_network_get_network_status() != SDK_RESULT_SUCCESS)
+    if (wm_sdk_network_get_network_status() != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("network is down - wait for PDP (see the NETWORK option)\r\n");
         return FALSE;
     }
-    if (sdk_network_get_ip_address(1, &ip) == SDK_RESULT_SUCCESS)
+    if (wm_sdk_network_get_ip_address(1, &ip) == WM_SDK_RESULT_SUCCESS)
         wm_printf("bearer up, ip=%s\r\n", ip.ipv4);
 
-    sr = sdk_mqtt_init();
-    if (sr != SDK_RESULT_SUCCESS)
+    sr = wm_sdk_mqtt_init();
+    if (sr != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("init failed rc=%ld (client buffers need a few KB of heap)\r\n", (long)sr);
         return FALSE;
@@ -381,7 +385,7 @@ static BOOL wm_mqtt_connect(void)
 
     /* Mutual TLS with the compiled-in AWS IoT credentials. Supplying ca_cert is
      * what selects TLS; the cert/key pair is what AWS IoT authenticates against.
-     * All three are static, as sdk_mqtt keeps the pointers while connected. */
+     * All three are static, as wm_sdk_mqtt keeps the pointers while connected. */
     memset(&cfg, 0, sizeof(cfg));
     cfg.host           = WM_MQTT_HOST;
     cfg.port           = WM_MQTT_PORT;
@@ -392,8 +396,8 @@ static BOOL wm_mqtt_connect(void)
     cfg.client_cert    = wm_clientcert;
     cfg.client_key     = wm_clientkey;
 
-    sr = sdk_mqtt_config(&cfg);
-    if (sr != SDK_RESULT_SUCCESS)
+    sr = wm_sdk_mqtt_config(&cfg);
+    if (sr != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("config failed rc=%ld\r\n", (long)sr);
         return FALSE;
@@ -402,10 +406,10 @@ static BOOL wm_mqtt_connect(void)
     wm_printf("client \"%s\", certs %s (mutual TLS)\r\n", s_client_id, wm_demo_certs_id);
 
     /* Blocks for a few seconds: TCP, TLS handshake, then MQTT CONNECT. */
-    sr = sdk_mqtt_connect();
-    if (sr != SDK_RESULT_SUCCESS)
+    sr = wm_sdk_mqtt_connect();
+    if (sr != WM_SDK_RESULT_SUCCESS)
     {
-        raw = sdk_mqtt_last_error();
+        raw = wm_sdk_mqtt_last_error();
         wm_printf("connect failed rc=%ld raw=%ld\r\n", (long)sr, (long)raw);
         /* 1..5 is the broker's CONNACK refusal rather than a local error. AWS
          * IoT usually drops the TLS session instead, so a handshake or cert
@@ -432,7 +436,7 @@ void wm_ui_mqtt_demo(void)
      * client stays connected so commands can still restart it remotely. */
     if (s_nmea_on)
     {
-        sdk_gps_set_nmea_callback(NULL);
+        wm_sdk_gps_set_nmea_callback(NULL);
         wm_ui_mqtt_nmea_stream_stop();
         wm_printf("stream OFF (dropped=%lu), still subscribed to %s\r\n",
                   (unsigned long)s_nmea_dropped, s_topic_cmd);
@@ -448,7 +452,7 @@ void wm_ui_mqtt_demo(void)
     /* One mutex and one task for the life of the app: the toggle only moves the
      * flag and the GNSS callback, so repeated toggling leaks nothing. Both are
      * in place before subscribing, so a command can safely drive the stream. */
-    if (s_nmea_mtx == NULL && sdk_mutex_create(&s_nmea_mtx, 0) != SDK_RESULT_SUCCESS)
+    if (s_nmea_mtx == NULL && wm_sdk_mutex_create(&s_nmea_mtx, 0) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("batch mutex create failed\r\n");
         return;
@@ -459,7 +463,7 @@ void wm_ui_mqtt_demo(void)
 
     if (s_nmea_task == NULL)
     {
-        s_nmea_task = sdk_task_create(wm_mqtt_nmea_pub_task, NULL, "MQTTPUB", NULL,
+        s_nmea_task = wm_sdk_task_create(wm_mqtt_nmea_pub_task, NULL, "MQTTPUB", NULL,
                                       WM_MQTT_PUB_TASK_STACK, TP_TIMED_ACTIVITY);
         if (s_nmea_task == NULL)
         {
@@ -470,7 +474,7 @@ void wm_ui_mqtt_demo(void)
 
     /* Registering the callback is what starts the flow; it replaces any raw
      * NMEA callback the GPS demo had installed. */
-    if (sdk_gps_set_nmea_callback(wm_mqtt_nmea_cb) != SDK_RESULT_SUCCESS)
+    if (wm_sdk_gps_set_nmea_callback(wm_mqtt_nmea_cb) != WM_SDK_RESULT_SUCCESS)
     {
         wm_printf("GPS not initialised (WM_GPS_SUPPORT off or board not validated?)\r\n");
         return;
@@ -478,11 +482,11 @@ void wm_ui_mqtt_demo(void)
     s_nmea_on = TRUE;
 
     /* Downlink: GPS configuration commands for this IMEI. */
-    if (sdk_mqtt_subscribe(s_topic_cmd, SDK_MQTT_QOS1, wm_mqtt_cmd_cb) == SDK_RESULT_SUCCESS)
+    if (wm_sdk_mqtt_subscribe(s_topic_cmd, WM_SDK_MQTT_QOS1, wm_mqtt_cmd_cb) == WM_SDK_RESULT_SUCCESS)
         wm_printf("subscribed  %s\r\n", s_topic_cmd);
     else
         wm_printf("subscribe to %s failed rc=%ld\r\n",
-                  s_topic_cmd, (long)sdk_mqtt_last_error());
+                  s_topic_cmd, (long)wm_sdk_mqtt_last_error());
 
     wm_printf("publishing  %s every %lu ms\r\n",
               s_topic_nmea, (unsigned long)s_pub_ms);

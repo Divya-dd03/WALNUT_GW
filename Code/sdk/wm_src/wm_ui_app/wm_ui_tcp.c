@@ -4,14 +4,14 @@
   * @author  Walnut Medical
   * @brief   Common Gateway (WEGW) reference application - TCP demo.
   *
-  *          One menu handler covering the sdk_tcp_* API: resolve a host, open an
+  *          One menu handler covering the wm_sdk_tcp_* API: resolve a host, open an
   *          event-driven socket, echo a short payload, print the reply.
   *
   *          The handler returns to the menu as soon as the connect is under way.
   *          Everything after that arrives through the socket callback.
   *
-  *          Note there are no lwIP includes: sdk_tcp_connect_host() resolves the
-  *          name, and SDK_AF_INET / SDK_SOCK_STREAM name the socket, so app code
+  *          Note there are no lwIP includes: wm_sdk_tcp_connect_host() resolves the
+  *          name, and WM_SDK_AF_INET / WM_SDK_SOCK_STREAM name the socket, so app code
   *          never sees a sockaddr. That matters because including lwip/sockets.h
   *          would macro-rewrite close/read/write for this whole file.
   ******************************************************************************
@@ -58,20 +58,20 @@ static void wm_tcp_event(int fd, int event, void *arg)
     char buf[WM_TCP_RECV_MAX + 1];
     int  n;
 
-    (void)arg;      /* always NULL - see SdkTcpSocketCallback */
+    (void)arg;      /* always NULL - see wm_SdkTcpSocketCallback */
 
     switch (event)
     {
-    case SDK_TCP_EVENT_CONNECT:
+    case WM_SDK_TCP_EVENT_CONNECT:
         wm_printf("tcp: connected (fd=%ld)\r\n", (long)fd);
-        n = sdk_tcp_send(fd, WM_TCP_PAYLOAD, (unsigned int)strlen(WM_TCP_PAYLOAD), 0);
+        n = wm_sdk_tcp_send(fd, WM_TCP_PAYLOAD, (unsigned int)strlen(WM_TCP_PAYLOAD), 0);
         wm_printf("tcp: sent %ld of %lu bytes\r\n",
                   (long)n, (unsigned long)strlen(WM_TCP_PAYLOAD));
         break;
 
-    case SDK_TCP_EVENT_RECV:
+    case WM_SDK_TCP_EVENT_RECV:
         /* This call is also what re-arms the next RECV event. */
-        n = sdk_tcp_recv(fd, buf, WM_TCP_RECV_MAX, 0);
+        n = wm_sdk_tcp_recv(fd, buf, WM_TCP_RECV_MAX, 0);
         if (n > 0)
         {
             buf[n] = '\0';
@@ -80,16 +80,16 @@ static void wm_tcp_event(int fd, int event, void *arg)
         else
         {
             wm_printf("tcp: recv returned %ld (errno=%ld)\r\n",
-                      (long)n, (long)sdk_tcp_get_sock_errno(fd));
+                      (long)n, (long)wm_sdk_tcp_get_sock_errno(fd));
         }
         break;
 
-    case SDK_TCP_EVENT_CLOSE:
-    case SDK_TCP_EVENT_ERROR:
+    case WM_SDK_TCP_EVENT_CLOSE:
+    case WM_SDK_TCP_EVENT_ERROR:
         wm_printf("tcp: %s (errno=%ld) -> closing\r\n",
-                  (event == SDK_TCP_EVENT_CLOSE) ? "peer closed" : "socket error",
-                  (long)sdk_tcp_get_sock_errno(fd));
-        wm_printf("tcp: close -> rc=%ld\r\n", (long)sdk_tcp_close(fd));
+                  (event == WM_SDK_TCP_EVENT_CLOSE) ? "peer closed" : "socket error",
+                  (long)wm_sdk_tcp_get_sock_errno(fd));
+        wm_printf("tcp: close -> rc=%ld\r\n", (long)wm_sdk_tcp_close(fd));
         s_tcp_fd = -1;
         break;
 
@@ -113,11 +113,11 @@ void wm_ui_tcp_demo(void)
      * limited number of event-driven sockets. */
     if (s_tcp_fd >= 0)
     {
-        wm_printf("closing previous socket -> rc=%ld\r\n", (long)sdk_tcp_close(s_tcp_fd));
+        wm_printf("closing previous socket -> rc=%ld\r\n", (long)wm_sdk_tcp_close(s_tcp_fd));
         s_tcp_fd = -1;
     }
 
-    fd = sdk_tcp_socket_create_with_callback(SDK_AF_INET, SDK_SOCK_STREAM, 0,
+    fd = wm_sdk_tcp_socket_create_with_callback(WM_SDK_AF_INET, WM_SDK_SOCK_STREAM, 0,
                                              wm_tcp_event);
     if (fd < 0)
     {
@@ -128,11 +128,11 @@ void wm_ui_tcp_demo(void)
 
     /* Resolution blocks here; the connect itself does not, so the result
      * arrives as a CONNECT or ERROR event. */
-    if (sdk_tcp_connect_host(fd, WM_TCP_HOST, (UINT16)WM_TCP_PORT,
+    if (wm_sdk_tcp_connect_host(fd, WM_TCP_HOST, (UINT16)WM_TCP_PORT,
                              WM_TCP_DNS_TIMEOUT_MS) != 0)
     {
         wm_printf("connect failed (DNS or no route) -> rc=%ld\r\n",
-                  (long)sdk_tcp_close(fd));
+                  (long)wm_sdk_tcp_close(fd));
         return;
     }
 
