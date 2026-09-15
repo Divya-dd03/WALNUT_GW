@@ -49,6 +49,7 @@
 #define WM_PCB_Z594_V1          102
 #define WM_PCB_Z628_V1			103
 #define WM_EVAL_GPS_V1			104
+#define WM_PCB_Z631_V1			105
 
 /* System Available SLEEP Settings ------------------------------------------------------------------*/
 #define WM_SLEEP_MODE_OFF		111
@@ -69,6 +70,9 @@
 
 /* GPS Settings ------------------------------------------------------------------*/
 #define WM_GPS_SUPPORT              1
+
+/* BLE Settings ------------------------------------------------------------------*/
+#define WM_BLE_SUPPORT              1
 
 /* System Build Purpose ------------------------------------------------------------------*/
 #define WM_PROD_APP 77

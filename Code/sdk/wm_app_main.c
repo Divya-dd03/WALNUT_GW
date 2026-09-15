@@ -16,7 +16,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "wm_global.h"
-#include "sdk_wm.h"
+#include "wm_sdk_wm.h"
 
 int appimg_enter(void *param)
 {
@@ -26,7 +26,7 @@ int appimg_enter(void *param)
 	wm_battery_ID = WM_CURRENT_BATTERY;
 	wm_sleep_mode = WM_CURRENT_SLEEP_MODE;
     RTI_LOG("WM Application Boot Start");
-    if (wm_system_init() != SDK_RESULT_SUCCESS)
+    if (wm_system_init() != WM_SDK_RESULT_SUCCESS)
         RTI_LOG("wm_system_init reported an error");
     WM_Entry_Task_Top_Most();  /* customer application entry */
 

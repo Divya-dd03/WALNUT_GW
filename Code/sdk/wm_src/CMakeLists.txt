@@ -25,8 +25,6 @@ target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/libhttpcl
 target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/libjson.a)
 target_link_libraries(${target} PUBLIC ${SOURCE_TOP_DIR}/wm_src/wm_lib/libwm_mqtt.a)
 # Add source files to the target library
-
-#Demo APP inclusion
 target_sources(${target} PRIVATE
     wm_lib/global/wm_global.c
 
@@ -36,6 +34,7 @@ target_sources(${target} PRIVATE
     # wm_ui_app/wm_ui_ota.c           # Exxclude files if OTA DEMO is not required
     # wm_ui_app/wm_ui_tcp.c           # Exxclude files if TCP DEMO is not required
     # wm_ui_app/wm_ui_mqtt.c          # Exxclude files if MQTT is not required
+    # wm_ui_app/wm_ui_ble.c           # Exxclude files if BLE DEMO is not required
     # wm_ui_app/wm_demo_certs.c       # Exxclude files if demo certs are not required
 
     # if weware app needs to be included or excluded
