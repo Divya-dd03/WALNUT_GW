@@ -77,6 +77,10 @@ Result cmd_force_ota(const char* args_string, char* response_buffer, size_t buff
 /* Forward declaration for GET-OTA-STATUS command handler */
 Result cmd_get_ota_status(const char* args_string, char* response_buffer, size_t buffer_size);
 
+/* TEMPORARY (debug): manual GNSS power control - remove with the two table entries */
+Result cmd_set_gps_on(const char* args_string, char* response_buffer, size_t buffer_size);
+Result cmd_set_gps_off(const char* args_string, char* response_buffer, size_t buffer_size);
+
 /* ============================================================================
  * Private Constants and Macros
  * ============================================================================ */
@@ -122,6 +126,11 @@ const cmd_handler_entry_t g_cmd_table[] = {   // Command handler table - add new
     {CMD_FORCED_OTA, "FORCED-OTA", TRUE, "Force OTA cycle (SIMCOM,STM,peri) bypassing prereq + cooldown gates", (module_func_t)cmd_force_ota},
     {CMD_GET_OTA_STATUS, "GET-OTA-STATUS", TRUE, "Report last OTA outcome/reason (STM+SIMCOM) for field debug", (module_func_t)cmd_get_ota_status},
     {CMD_PING_STM, "PING-STM", TRUE, "Probe STM (get-device-info, 5s x3); replies STM OK/FAIL to sender", NULL},
+    /* TEMPORARY (debug): manual GNSS power control. Lets the receiver be power-cycled
+     * from software instead of the bench button, to exercise config re-application.
+     * Remove these two rows, the two enums and gps_ops_set_power_enabled() together. */
+    {CMD_SET_GPS_ON, "SET-GPS-ON", TRUE, "TEMP: power GNSS receiver on and re-apply config", (module_func_t)cmd_set_gps_on},
+    {CMD_SET_GPS_OFF, "SET-GPS-OFF", TRUE, "TEMP: power GNSS receiver off (parse-fail reboot suppressed)", (module_func_t)cmd_set_gps_off},
 };
 const UINT32 g_cmd_table_size = sizeof(g_cmd_table) / sizeof(g_cmd_table[0]);  // Number of commands in table
 
@@ -270,7 +279,7 @@ static Result cmd_process_command(const ModuleMessage* request, char* response_b
      * and reply with an immediate ack; the OK/FAIL verdict follows from the UART task. */
     if (cmd_ctx.cmd_enum == CMD_PING_STM) {
         #ifdef UART_UNAVAILABLE
-        wm_sdk_log_info("PING-STM received from module %u, address %s: UART unavailable",
+        LOG_INFO("PING-STM received from module %u, address %s: UART unavailable",
                      (unsigned)request->source_module, request->address);
         snprintf(response_buffer, buffer_size, "ERROR: PING-STM unavailable (UART module not present)");
         #else
@@ -377,7 +386,7 @@ Result command_manager_deinit(void)
     memset(&g_command_manager.task_stats, 0, sizeof(g_command_manager.task_stats));
     g_command_manager.module = NULL;
     g_command_manager.initialized = FALSE;
-    wm_sdk_log_info("Command manager stopped");
+    LOG_INFO("Command manager stopped");
     return RESULT_SUCCESS;
 }
 
@@ -392,7 +401,7 @@ Result command_manager_init(void)
 
     g_command_manager.module = g_modules[MODULE_ID_CMD];
     if (!g_command_manager.module) {
-        wm_sdk_log_error("Command manager module not found");
+        LOG_ERROR("Command manager module not found");
         return RESULT_ERROR;
     }
 
@@ -408,7 +417,7 @@ Result command_manager_init(void)
 
     if (queue_manager_create(&g_command_manager.module->config.msg_q_config,
                              &g_command_manager.module->config.msg_q) != RESULT_SUCCESS) {
-        wm_sdk_log_error("Command queue create failed");
+        LOG_ERROR("Command queue create failed");
         return RESULT_ERROR;
     }
 
@@ -422,7 +431,7 @@ Result command_manager_init(void)
                                                  sizeof(g_command_manager.task_stack),
                                                  5);
     if (!g_command_manager.task_ref) {
-        wm_sdk_log_error("Command task create failed");
+        LOG_ERROR("Command task create failed");
         queue_manager_destroy(g_command_manager.module->config.msg_q,
                               &g_command_manager.module->config.msg_q_config);
         g_command_manager.module->config.msg_q = NULL;
@@ -430,6 +439,6 @@ Result command_manager_init(void)
     }
 
     g_command_manager.initialized = TRUE;
-    wm_sdk_log_info("Command manager ready");
+    LOG_INFO("Command manager ready");
     return RESULT_SUCCESS;
 }

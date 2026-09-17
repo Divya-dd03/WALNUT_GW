@@ -47,6 +47,10 @@
 #include "wm_sdk_log.h"
 #include <string.h>
 
+#define LOG_TAG "HTTPS_DRV"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /* This file implements the walnut backend and talks to the kernel under its
  * own wm_sdk_https_* names, which no longer collide with the CG names: the
  * CG spellings (sdk_https_get_response / _get_response_len and the download
@@ -95,12 +99,12 @@ static BOOL https_client_init_async(void)
         g_https_evt_msgq = wm_sdk_msgq_create("https_evt_msgq", sizeof(wm_SdkHttpsEvent),
                                            HTTPS_EVENT_QUEUE_DEPTH, 0);
         if (!g_https_evt_msgq) {
-            wm_sdk_log_error("HTTPS: event queue create failed");
+            LOG_ERROR("HTTPS: event queue create failed");
             return FALSE;
         }
     }
     if (wm_sdk_https_init(WM_SDK_HTTPS_MODE_ASYNC, g_https_evt_msgq) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("HTTPS: init failed (request in flight?)");
+        LOG_ERROR("HTTPS: init failed (request in flight?)");
         return FALSE;
     }
     return TRUE;
@@ -122,13 +126,13 @@ static int https_wait_action_event(UINT32 session)
         memset(&ev, 0, sizeof(ev));
         if (wm_sdk_msgq_recv(g_https_evt_msgq, &ev, HTTPS_EVENT_WAIT_MS - waited_ms)
                 != WM_SDK_RESULT_SUCCESS) {
-            wm_sdk_log_error("HTTPS request: no completion event within %lu ms",
+            LOG_ERROR("HTTPS request: no completion event within %lu ms",
                           (unsigned long)HTTPS_EVENT_WAIT_MS);
             return 0;
         }
         if (ev.type == WM_SDK_HTTPS_EVT_ACTION_DONE && ev.ssl_index == session)
             break;
-        wm_sdk_log_warning("HTTPS request: ignoring event type %u for session %u",
+        LOG_WARN("HTTPS request: ignoring event type %u for session %u",
                         (unsigned)ev.type, (unsigned)ev.ssl_index);
         waited_ms += wm_sdk_get_ticks() - t0;
     }
@@ -136,7 +140,7 @@ static int https_wait_action_event(UINT32 session)
         return 0;
 
     if (ev.status != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("HTTPS request: action failed (rc=%ld err=%ld)",
+        LOG_ERROR("HTTPS request: action failed (rc=%ld err=%ld)",
                       (long)ev.status, (long)wm_sdk_https_get_last_error(session));
         return 0;
     }
@@ -144,7 +148,7 @@ static int https_wait_action_event(UINT32 session)
      * status code); the kernel reports the exchange and the verdict
      * separately. */
     if (ev.http_code < 200 || ev.http_code >= 300) {
-        wm_sdk_log_error("HTTPS request: status %ld", (long)ev.http_code);
+        LOG_ERROR("HTTPS request: status %ld", (long)ev.http_code);
         return 0;
     }
     return 1;
@@ -220,7 +224,7 @@ static int sdk_walnut_https_request_impl(int method, const char *url, const char
 
     /* Async: returns as soon as the request is queued on the kernel worker. */
     if (wm_sdk_https_action(session, action) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("HTTPS request: action not accepted (err=%ld)",
+        LOG_ERROR("HTTPS request: action not accepted (err=%ld)",
                       (long)wm_sdk_https_get_last_error(session));
         https_request_abort(session);
         return 0;
@@ -315,7 +319,7 @@ static BOOL https_download_rearm(void)
     if (g_download_url[0] == '\0')
         return FALSE;
     if (wm_sdk_https_set_params(WM_SDK_HTTPS_DOWNLOAD_INDEX, g_download_url, 0) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("HTTPS download: re-arm set_params failed (err=%ld)",
+        LOG_ERROR("HTTPS download: re-arm set_params failed (err=%ld)",
                       (long)wm_sdk_https_get_last_error(WM_SDK_HTTPS_DOWNLOAD_INDEX));
         return FALSE;
     }
@@ -328,7 +332,7 @@ static sdk_https_returncode_t sdk_walnut_https_download_set_params_impl(const ch
 {
     if (!url || strlen(url) == 0) return SDK_HTTPS_INVALID_PARAMETER;
     if (strlen(url) >= sizeof(g_download_url)) {
-        wm_sdk_log_error("HTTPS download: URL too long (%u >= %u)",
+        LOG_ERROR("HTTPS download: URL too long (%u >= %u)",
                       (unsigned)strlen(url), (unsigned)sizeof(g_download_url));
         return SDK_HTTPS_INVALID_PARAMETER;
     }
@@ -344,7 +348,7 @@ static int sdk_walnut_https_download_get_file_size_impl(UINT32 *file_size)
      * failure in CG (the server cannot serve ranges either). Synchronous
      * (blocks the caller for one HEAD/ranged exchange). */
     if (wm_sdk_https_download_get_file_size(file_size) != 0) {
-        wm_sdk_log_error("HTTPS download: size query failed (err=%ld)",
+        LOG_ERROR("HTTPS download: size query failed (err=%ld)",
                       (long)wm_sdk_https_get_last_error(WM_SDK_HTTPS_DOWNLOAD_INDEX));
         return 0;
     }
@@ -369,10 +373,10 @@ static int sdk_walnut_https_download_read_chunk_impl(UINT32 offset, UINT32 size,
         }
         if (wm_sdk_https_download_read_chunk(offset, size, buffer, bytes_read) == 0) {
             if (attempt > 0)
-                wm_sdk_log_warning("HTTPS download: chunk at %lu ok on retry", (unsigned long)offset);
+                LOG_WARN("HTTPS download: chunk at %lu ok on retry", (unsigned long)offset);
             return 1;
         }
-        wm_sdk_log_error("HTTPS download: chunk at %lu failed (attempt %d, http=%ld err=%ld)",
+        LOG_ERROR("HTTPS download: chunk at %lu failed (attempt %d, http=%ld err=%ld)",
                       (unsigned long)offset, attempt + 1,
                       (long)wm_sdk_https_get_status_code(WM_SDK_HTTPS_DOWNLOAD_INDEX),
                       (long)wm_sdk_https_get_last_error(WM_SDK_HTTPS_DOWNLOAD_INDEX));

@@ -19,6 +19,10 @@
 #include "device_utils.h"
 #include "weware_version.h"
 
+#define LOG_TAG "LOG_PKT"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /*---------------------------------------------------------------
  * Static State
  *--------------------------------------------------------------*/
@@ -124,7 +128,7 @@ static void write_version_field(char *dest, const char *version, const char *nam
         dest[0] = temp[1];
         dest[1] = temp[0];
     } else {
-        wm_sdk_log_warning("TCP invalid %s version format: %s, using fallback",
+        LOG_WARN("TCP invalid %s version format: %s, using fallback",
                         name, version);
         dest[0] = 0x00;
         dest[1] = 0x00;
@@ -140,7 +144,7 @@ int login_packet_create(char *buffer, int buffer_size)
     unsigned char checksum;
 
     if (!buffer || buffer_size < LOGIN_PACKET_TOTAL_SIZE) {
-        wm_sdk_log_error("TCP invalid parameters for login packet creation");
+        LOG_ERROR("TCP invalid parameters for login packet creation");
         return 0;
     }
 
@@ -159,11 +163,11 @@ int login_packet_create(char *buffer, int buffer_size)
 
     /* IMEI (8 bytes) */
     if (!device_utils_get_imei(imei)) {
-        wm_sdk_log_error("TCP IMEI cache not available - cannot create login packet");
+        LOG_ERROR("TCP IMEI cache not available - cannot create login packet");
         return 0;
     }
     if (!imei_to_8bytes(imei, &buffer[LOGIN_OFFSET_IMEI])) {
-        wm_sdk_log_error("TCP failed to convert IMEI to bytes: %s", imei);
+        LOG_ERROR("TCP failed to convert IMEI to bytes: %s", imei);
         return 0;
     }
 
@@ -189,7 +193,7 @@ int login_packet_create(char *buffer, int buffer_size)
     buffer[LOGIN_OFFSET_STOP_ID]     = LOGIN_STOP_ID1;
     buffer[LOGIN_OFFSET_STOP_ID + 1] = LOGIN_STOP_ID2;
 
-    wm_sdk_log_info("TCP login packet created (size=%d, session=%u, checksum=0x%02X, IMEI=%s)",
+    LOG_INFO("TCP login packet created (size=%d, session=%u, checksum=0x%02X, IMEI=%s)",
                  LOGIN_PACKET_TOTAL_SIZE, g_session_count, checksum, imei);
 
     return LOGIN_PACKET_TOTAL_SIZE;

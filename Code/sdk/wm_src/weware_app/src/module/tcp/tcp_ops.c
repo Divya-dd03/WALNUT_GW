@@ -46,6 +46,10 @@
 #include "common/event_manager.h"
 #include "common/utils.h"            /* utils_hex_str_to_bytes */
 
+#define LOG_TAG "TCP_OPS"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /* Exported by the kernel but not declared in lwIP headers */
 extern void lwip_freeaddrinfo(struct addrinfo *ai);
 
@@ -90,14 +94,14 @@ static bool tcp_validate_socket_for_send(void)
     int err;
 
     if (g_tcp_client.tcp_fd < 0) {
-        wm_sdk_log_warning("TCP socket invalid (fd=%d) for send operation",
+        LOG_WARN("TCP socket invalid (fd=%d) for send operation",
                         g_tcp_client.tcp_fd);
         return false;
     }
 
     err = sdk_tcp_get_sock_errno(g_tcp_client.tcp_fd);
     if (err == ENOTCONN || err == ECONNRESET || err == ECONNABORTED || err == EPIPE) {
-        wm_sdk_log_error("TCP socket in error state (errno=%d) for send operation", err);
+        LOG_ERROR("TCP socket in error state (errno=%d) for send operation", err);
         return false;
     }
     return true;
@@ -112,7 +116,7 @@ static int tcp_send_data(int sockfd, const void *buffer, int size)
     int send_result;
 
     if (sockfd < 0 || !buffer || size <= 0) {
-        wm_sdk_log_warning("TCP [SEND] invalid parameters (fd=%d, size=%d)",
+        LOG_WARN("TCP [SEND] invalid parameters (fd=%d, size=%d)",
                         sockfd, size);
         return -1;
     }
@@ -120,7 +124,7 @@ static int tcp_send_data(int sockfd, const void *buffer, int size)
     send_result = sdk_tcp_send(sockfd, buffer, (unsigned int)size, 0);
 
     if (send_result < 0) {
-        wm_sdk_log_error("TCP [SEND] send failed (result=%d, errno=%d)",
+        LOG_ERROR("TCP [SEND] send failed (result=%d, errno=%d)",
                       send_result, sdk_tcp_get_sock_errno(sockfd));
         /* Reset send tracking on error - callback won't fire for failed sends */
         tcp_reset_send_tracking();
@@ -128,12 +132,12 @@ static int tcp_send_data(int sockfd, const void *buffer, int size)
     }
     if (send_result == 0) {
         /* Buffer full - callback will notify when ready (SENDPLUS event) */
-        wm_sdk_debug_print("TCP [SEND] send buffer full, waiting for SENDPLUS\r\n");
+        LOG_DEBUG("TCP [SEND] send buffer full, waiting for SENDPLUS");
         return 0;
     }
 
     /* Send succeeded - update tracking, callback will notify when ACKed */
-    wm_sdk_debug_print("TCP [SEND] sent %d/%d bytes\r\n", send_result, size);
+    LOG_DEBUG("TCP [SEND] sent %d/%d bytes", send_result, size);
     g_tcp_client.tcp_bytes_sent  = send_result;
     g_tcp_client.tcp_bytes_acked = 0;
 
@@ -183,7 +187,7 @@ static void tcp_pop_send_queue_batch_and_free(const ModuleConfig *tcp_config, UI
 
     if (queue_pop(tcp_config->msg_q, &tcp_config->msg_q_config,
                   sink, n, &popped) != RESULT_SUCCESS) {
-        wm_sdk_log_warning("TCP [STATE] queue_pop after send failed (expected %u elements)",
+        LOG_WARN("TCP [STATE] queue_pop after send failed (expected %u elements)",
                         (unsigned)n);
         return;
     }
@@ -228,7 +232,7 @@ static int tcp_prepend_live_first_queue_tail(const ModuleConfig *tcp_config,
     memmove(buf + payload_len, buf, (size_t)used_bytes);
     memcpy(buf, payload, payload_len);
     tcp_free_module_msg_dynamic(&tail_msg);
-    wm_sdk_log_info("TCP [STATE] SENDING_DATA: prepended tail (%u B) before batch (%d B)",
+    LOG_INFO("TCP [STATE] SENDING_DATA: prepended tail (%u B) before batch (%d B)",
                  (unsigned)payload_len, used_bytes);
     return used_bytes + (int)payload_len;
 }
@@ -256,7 +260,7 @@ static int tcp_combine_messages(ModuleMessage *msgs, UINT32 count, char *buffer,
         }
         if (plen > (size_t)max_size) {
             invalid_count++;
-            wm_sdk_debug_print("TCP [COMBINE] skip source=%d (len=%u > max=%d)\r\n",
+            LOG_DEBUG("TCP [COMBINE] skip source=%d (len=%u > max=%d)",
                             (int)msg->source_module, (unsigned)plen, max_size);
             continue;
         }
@@ -276,10 +280,10 @@ static int tcp_combine_messages(ModuleMessage *msgs, UINT32 count, char *buffer,
     }
 
     if (invalid_count > 0)
-        wm_sdk_debug_print("TCP [COMBINE] skipped %d invalid packet(s) of %u\r\n",
+        LOG_DEBUG("TCP [COMBINE] skipped %d invalid packet(s) of %u",
                         invalid_count, (unsigned)count);
     if (messages_processed > 0)
-        wm_sdk_debug_print("TCP [COMBINE] combined %d message(s) into %d bytes\r\n",
+        LOG_DEBUG("TCP [COMBINE] combined %d message(s) into %d bytes",
                         messages_processed, total_bytes);
 
     return total_bytes;
@@ -292,7 +296,7 @@ static int tcp_combine_messages(ModuleMessage *msgs, UINT32 count, char *buffer,
 Result tcp_state_handle_wait_network(void)
 {
     if (weware_network_is_connected()) {
-        wm_sdk_debug_print("TCP network ready\r\n");
+        LOG_DEBUG("TCP network ready");
         return RESULT_SUCCESS;
     }
     return RESULT_BUSY;
@@ -303,14 +307,14 @@ Result tcp_state_handle_socket_creating(void)
     g_tcp_client.tcp_fd = sdk_tcp_socket_create_with_callback(
         AF_INET, SOCK_STREAM, IPPROTO_TCP, tcp_socket_event_callback);
     if (g_tcp_client.tcp_fd < 0) {
-        wm_sdk_log_error("TCP socket create failed");
+        LOG_ERROR("TCP socket create failed");
         return RESULT_ERROR;
     }
 
     /* Walnut: the backend already made the socket non-blocking (FIONBIO);
      * the reference's SO_NONBLOCK setsockopt does not exist here. */
 
-    wm_sdk_debug_print("TCP socket created fd=%d\r\n", g_tcp_client.tcp_fd);
+    LOG_DEBUG("TCP socket created fd=%d", g_tcp_client.tcp_fd);
     return RESULT_SUCCESS;
 }
 
@@ -322,11 +326,11 @@ Result tcp_state_handle_socket_created(void)
     int              ret;
 
     if (!g_tcp_client.config) {
-        wm_sdk_log_error("TCP [STATE] SOCKET_CREATED: config not available");
+        LOG_ERROR("TCP [STATE] SOCKET_CREATED: config not available");
         return RESULT_ERROR;
     }
 
-    wm_sdk_log_info("TCP [STATE] SOCKET_CREATED: connecting to %s:%u",
+    LOG_INFO("TCP [STATE] SOCKET_CREATED: connecting to %s:%u",
                  g_tcp_client.config->server_ip,
                  (unsigned)g_tcp_client.config->server_port);
 
@@ -343,7 +347,7 @@ Result tcp_state_handle_socket_created(void)
     ret = lwip_getaddrinfo(g_tcp_client.config->server_ip, portstr,
                            &hints, &result);
     if (ret != 0 || result == NULL) {
-        wm_sdk_log_error("TCP [STATE] SOCKET_CREATED: getaddrinfo failed for %s:%u (ret=%d)",
+        LOG_ERROR("TCP [STATE] SOCKET_CREATED: getaddrinfo failed for %s:%u (ret=%d)",
                       g_tcp_client.config->server_ip,
                       (unsigned)g_tcp_client.config->server_port, ret);
         return RESULT_ERROR;
@@ -363,15 +367,15 @@ Result tcp_state_handle_socket_created(void)
         /* EINPROGRESS means connection is in progress - expected for
          * non-blocking sockets */
         if (err == EINPROGRESS || err == 115 || err == EAGAIN || err == 11) {
-            wm_sdk_debug_print("TCP [STATE] SOCKET_CREATED: connection in progress (errno=%d)\r\n", err);
+            LOG_DEBUG("TCP [STATE] SOCKET_CREATED: connection in progress (errno=%d)", err);
             return RESULT_SUCCESS;  /* Transition to CONNECTING */
         }
-        wm_sdk_log_error("TCP [STATE] SOCKET_CREATED: connect failed immediately, errno=%d", err);
+        LOG_ERROR("TCP [STATE] SOCKET_CREATED: connect failed immediately, errno=%d", err);
         return RESULT_ERROR;
     }
 
     /* Connected immediately */
-    wm_sdk_log_info("TCP [STATE] SOCKET_CREATED: connected immediately");
+    LOG_INFO("TCP [STATE] SOCKET_CREATED: connected immediately");
     return RESULT_SUCCESS;  /* Transition to CONNECTING (callback confirms) */
 }
 
@@ -379,7 +383,7 @@ Result tcp_state_handle_connecting(void)
 {
     /* Validate socket state */
     if (!tcp_validate_socket_for_send()) {
-        wm_sdk_log_warning("TCP [STATE] CONNECTING: socket invalid, transitioning to ERROR");
+        LOG_WARN("TCP [STATE] CONNECTING: socket invalid, transitioning to ERROR");
         return RESULT_ERROR;
     }
 
@@ -391,7 +395,7 @@ Result tcp_state_handle_connected(void)
     /* Broadcast CONNECTED only on the edge (reference parity; module_manager
      * tracks TCP connected state through this event) */
     if (!g_tcp_client.last_connected_state) {
-        wm_sdk_log_info("TCP [STATE] CONNECTED: connection established, broadcasting event");
+        LOG_INFO("TCP [STATE] CONNECTED: connection established, broadcasting event");
         event_manager_broadcast(EVENT_TCP_CONNECTED, "TCP Client", NULL, 0);
         g_tcp_client.last_connected_state = true;
     }
@@ -406,7 +410,7 @@ Result tcp_state_handle_sending_login(void)
 
     /* Validate socket before sending */
     if (!tcp_validate_socket_for_send()) {
-        wm_sdk_log_warning("TCP [STATE] SENDING_LOGIN: socket invalid, transitioning to ERROR");
+        LOG_WARN("TCP [STATE] SENDING_LOGIN: socket invalid, transitioning to ERROR");
         return RESULT_ERROR;
     }
 
@@ -416,7 +420,7 @@ Result tcp_state_handle_sending_login(void)
         /* Walnut: the usual cause is the IMEI cache not being ready yet -
          * retry (the reference errors out; its IMEI is guaranteed by then).
          * The SENDING_LOGIN state timeout escalates if it never appears. */
-        wm_sdk_log_warning("TCP [STATE] SENDING_LOGIN: failed to create login packet (size: %d, expected: %d)",
+        LOG_WARN("TCP [STATE] SENDING_LOGIN: failed to create login packet (size: %d, expected: %d)",
                         packet_size, LOGIN_PACKET_TOTAL_SIZE);
         return RESULT_BUSY;
     }
@@ -428,11 +432,11 @@ Result tcp_state_handle_sending_login(void)
             g_login_packet_buffer + LOGIN_PACKET_TOTAL_SIZE,
             (int)(sizeof(g_login_packet_buffer) - (size_t)LOGIN_PACKET_TOTAL_SIZE));
         if (gps_len != GPS_PACKET_TOTAL_SIZE) {
-            wm_sdk_log_warning("TCP [STATE] SENDING_LOGIN: loginwithgps enabled but last-valid GPS build failed (%d), login only",
+            LOG_WARN("TCP [STATE] SENDING_LOGIN: loginwithgps enabled but last-valid GPS build failed (%d), login only",
                             gps_len);
         } else {
             packet_size = LOGIN_PACKET_TOTAL_SIZE + GPS_PACKET_TOTAL_SIZE;
-            wm_sdk_debug_print("TCP [STATE] SENDING_LOGIN: appended last-valid GPS (%d bytes), total %d\r\n",
+            LOG_DEBUG("TCP [STATE] SENDING_LOGIN: appended last-valid GPS (%d bytes), total %d",
                             gps_len, packet_size);
         }
     }
@@ -440,16 +444,16 @@ Result tcp_state_handle_sending_login(void)
     bytes_sent = tcp_send_data(g_tcp_client.tcp_fd, g_login_packet_buffer,
                                packet_size);
     if (bytes_sent > 0) {
-        wm_sdk_log_info("TCP [STATE] SENDING_LOGIN: login packet sent (%d bytes), waiting for ACK",
+        LOG_INFO("TCP [STATE] SENDING_LOGIN: login packet sent (%d bytes), waiting for ACK",
                      bytes_sent);
         return RESULT_SUCCESS;  /* Transition to WAIT_ACK_LOGIN */
     }
     if (bytes_sent == 0) {
-        wm_sdk_debug_print("TCP [STATE] SENDING_LOGIN: send buffer full, waiting for SENDPLUS\r\n");
+        LOG_DEBUG("TCP [STATE] SENDING_LOGIN: send buffer full, waiting for SENDPLUS");
         return RESULT_BUSY;     /* Buffer full, wait and retry */
     }
 
-    wm_sdk_log_error("TCP [STATE] SENDING_LOGIN: failed to send login packet");
+    LOG_ERROR("TCP [STATE] SENDING_LOGIN: failed to send login packet");
     return RESULT_ERROR;
 }
 
@@ -459,14 +463,14 @@ Result tcp_state_handle_wait_ack_login(void)
 
     /* CRITICAL: check if ACK has already been received (race protection) */
     if (tcp_check_ack_received()) {
-        wm_sdk_log_info("TCP [STATE] WAIT_ACK_LOGIN: ACK received (sent=%d, acked=%d), transitioning to ACK_RECEIVED",
+        LOG_INFO("TCP [STATE] WAIT_ACK_LOGIN: ACK received (sent=%d, acked=%d), transitioning to ACK_RECEIVED",
                      g_tcp_client.tcp_bytes_sent, g_tcp_client.tcp_bytes_acked);
         return RESULT_SUCCESS;  /* reset happens in ack_received */
     }
 
     /* Validate socket state */
     if (!tcp_validate_socket_for_send()) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_LOGIN: socket invalid, transitioning to ERROR");
+        LOG_WARN("TCP [STATE] WAIT_ACK_LOGIN: socket invalid, transitioning to ERROR");
         tcp_reset_send_tracking();
         return RESULT_ERROR;
     }
@@ -474,19 +478,19 @@ Result tcp_state_handle_wait_ack_login(void)
     /* Check socket error state */
     err = sdk_tcp_get_sock_errno(g_tcp_client.tcp_fd);
     if (err == ENOTCONN || err == ECONNRESET || err == ECONNABORTED || err == EPIPE) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_LOGIN: socket closed/reset (errno=%d), transitioning to ERROR", err);
+        LOG_WARN("TCP [STATE] WAIT_ACK_LOGIN: socket closed/reset (errno=%d), transitioning to ERROR", err);
         tcp_reset_send_tracking();
         return RESULT_ERROR;
     }
     if (err != 0 && err != EAGAIN && err != 11) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_LOGIN: socket error (errno=%d), transitioning to ERROR", err);
+        LOG_WARN("TCP [STATE] WAIT_ACK_LOGIN: socket error (errno=%d), transitioning to ERROR", err);
         tcp_reset_send_tracking();
         return RESULT_ERROR;
     }
 
     /* Validate that we have a pending send operation */
     if (g_tcp_client.tcp_bytes_sent <= 0) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_LOGIN: no pending send (tcp_bytes_sent=%d), transitioning to ERROR",
+        LOG_WARN("TCP [STATE] WAIT_ACK_LOGIN: no pending send (tcp_bytes_sent=%d), transitioning to ERROR",
                         g_tcp_client.tcp_bytes_sent);
         tcp_reset_send_tracking();
         return RESULT_ERROR;
@@ -514,10 +518,10 @@ Result tcp_state_handle_ack_received(void)
 
     if (!g_tcp_client.session_up) {
         g_tcp_client.session_up = true;
-        wm_sdk_log_info("TCP session ready");
+        LOG_INFO("TCP session ready");
     }
 
-    wm_sdk_log_info("TCP [STATE] ACK_RECEIVED: ACK confirmed, transitioning to SENDING_DATA");
+    LOG_INFO("TCP [STATE] ACK_RECEIVED: ACK confirmed, transitioning to SENDING_DATA");
     return RESULT_SUCCESS;  /* Transition to SENDING_DATA */
 }
 
@@ -535,7 +539,7 @@ Result tcp_state_handle_sending_data(void)
 
     /* Validate socket before sending */
     if (!tcp_validate_socket_for_send()) {
-        wm_sdk_log_warning("TCP [STATE] SENDING_DATA: socket invalid, transitioning to ERROR");
+        LOG_WARN("TCP [STATE] SENDING_DATA: socket invalid, transitioning to ERROR");
         return RESULT_ERROR;
     }
 
@@ -551,7 +555,7 @@ Result tcp_state_handle_sending_data(void)
                                        g_data_packet_buffer, MAX_COMBINED_SIZE);
     if (total_bytes == 0) {
         tcp_pop_send_queue_batch_and_free(tcp_config, peeked);
-        wm_sdk_log_warning("TCP [STATE] SENDING_DATA: no valid messages to send, dropped peeked batch");
+        LOG_WARN("TCP [STATE] SENDING_DATA: no valid messages to send, dropped peeked batch");
         return RESULT_BUSY;
     }
 
@@ -562,17 +566,17 @@ Result tcp_state_handle_sending_data(void)
                                total_bytes);
     if (bytes_sent > 0) {
         g_tcp_client.tcp_send_queue_batch_count = peeked;
-        wm_sdk_log_info("TCP [STATE] SENDING_DATA: data packet sent (%d bytes, %u rows), waiting for ACK",
+        LOG_INFO("TCP [STATE] SENDING_DATA: data packet sent (%d bytes, %u rows), waiting for ACK",
                      bytes_sent, (unsigned)peeked);
         return RESULT_SUCCESS;  /* Transition to WAIT_ACK_DATA */
     }
     if (bytes_sent == 0) {
-        wm_sdk_debug_print("TCP [STATE] SENDING_DATA: send buffer full, waiting for SENDPLUS\r\n");
+        LOG_DEBUG("TCP [STATE] SENDING_DATA: send buffer full, waiting for SENDPLUS");
         return RESULT_BUSY;
     }
 
     /* Rows stay in the queue (popped only on ACK) - resent after reconnect */
-    wm_sdk_log_error("TCP [STATE] SENDING_DATA: failed to send data packet");
+    LOG_ERROR("TCP [STATE] SENDING_DATA: failed to send data packet");
     return RESULT_ERROR;
 }
 
@@ -582,14 +586,14 @@ Result tcp_state_handle_wait_ack_data(void)
 
     /* CRITICAL: check if ACK has already been received (race protection) */
     if (tcp_check_ack_received()) {
-        wm_sdk_log_info("TCP [STATE] WAIT_ACK_DATA: ACK received (sent=%d, acked=%d), transitioning to ACK_RECEIVED",
+        LOG_INFO("TCP [STATE] WAIT_ACK_DATA: ACK received (sent=%d, acked=%d), transitioning to ACK_RECEIVED",
                      g_tcp_client.tcp_bytes_sent, g_tcp_client.tcp_bytes_acked);
         return RESULT_SUCCESS;  /* queue pop + reset in ack_received */
     }
 
     /* Validate socket state */
     if (!tcp_validate_socket_for_send()) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_DATA: socket invalid, transitioning to ERROR");
+        LOG_WARN("TCP [STATE] WAIT_ACK_DATA: socket invalid, transitioning to ERROR");
         tcp_reset_send_tracking();
         return RESULT_ERROR;
     }
@@ -597,19 +601,19 @@ Result tcp_state_handle_wait_ack_data(void)
     /* Check socket error state */
     err = sdk_tcp_get_sock_errno(g_tcp_client.tcp_fd);
     if (err == ENOTCONN || err == ECONNRESET || err == ECONNABORTED || err == EPIPE) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_DATA: socket closed/reset (errno=%d), transitioning to ERROR", err);
+        LOG_WARN("TCP [STATE] WAIT_ACK_DATA: socket closed/reset (errno=%d), transitioning to ERROR", err);
         tcp_reset_send_tracking();
         return RESULT_ERROR;
     }
     if (err != 0 && err != EAGAIN && err != 11) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_DATA: socket error (errno=%d), transitioning to ERROR", err);
+        LOG_WARN("TCP [STATE] WAIT_ACK_DATA: socket error (errno=%d), transitioning to ERROR", err);
         tcp_reset_send_tracking();
         return RESULT_ERROR;
     }
 
     /* Validate that we have a pending send operation */
     if (g_tcp_client.tcp_bytes_sent <= 0) {
-        wm_sdk_log_warning("TCP [STATE] WAIT_ACK_DATA: no pending send (tcp_bytes_sent=%d), transitioning to ERROR",
+        LOG_WARN("TCP [STATE] WAIT_ACK_DATA: no pending send (tcp_bytes_sent=%d), transitioning to ERROR",
                         g_tcp_client.tcp_bytes_sent);
         tcp_reset_send_tracking();
         return RESULT_ERROR;
@@ -625,14 +629,14 @@ Result tcp_state_handle_receiving(void)
 
 Result tcp_state_handle_closed(void)
 {
-    wm_sdk_log_info("TCP [STATE] CLOSED: closing connection");
+    LOG_INFO("TCP [STATE] CLOSED: closing connection");
 
     /* Reset send tracking */
     tcp_reset_send_tracking();
 
     /* Broadcast DISCONNECTED only on the edge (reference parity) */
     if (g_tcp_client.last_connected_state) {
-        wm_sdk_log_info("TCP [STATE] CLOSED: broadcasting DISCONNECTED event");
+        LOG_INFO("TCP [STATE] CLOSED: broadcasting DISCONNECTED event");
         event_manager_broadcast(EVENT_TCP_DISCONNECTED, "TCP Client", NULL, 0);
         g_tcp_client.last_connected_state = false;
     }
@@ -652,13 +656,13 @@ Result tcp_state_handle_closed(void)
     /* Initialize reconnect delay counter */
     g_tcp_client.reconnect_delay_cycles = 0;
 
-    wm_sdk_debug_print("TCP socket closed\r\n");
+    LOG_DEBUG("TCP socket closed");
     return RESULT_SUCCESS;
 }
 
 Result tcp_state_handle_error(void)
 {
-    wm_sdk_log_error("TCP error state");
+    LOG_ERROR("TCP error state");
 
     /* Close socket immediately if still open */
     if (g_tcp_client.tcp_fd >= 0) {
@@ -674,7 +678,7 @@ Result tcp_state_handle_error(void)
     /* Initialize reconnect delay counter */
     g_tcp_client.reconnect_delay_cycles = 0;
 
-    wm_sdk_debug_print("TCP recovering from error\r\n");
+    LOG_DEBUG("TCP recovering from error");
     return RESULT_SUCCESS;
 }
 
@@ -692,7 +696,7 @@ Result tcp_state_handle_reconnect_delay(void)
     g_tcp_client.reconnect_delay_cycles++;
 
     if (g_tcp_client.reconnect_delay_cycles >= target_cycles) {
-        wm_sdk_debug_print("TCP reconnect delay done\r\n");
+        LOG_DEBUG("TCP reconnect delay done");
         g_tcp_client.reconnect_delay_cycles = 0;
         return RESULT_SUCCESS;
     }

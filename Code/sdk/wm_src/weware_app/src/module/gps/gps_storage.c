@@ -30,6 +30,10 @@
 #include "module/gps/gps_ops.h"
 #include "common/utils.h"
 
+#define LOG_TAG "GPS_STOR"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 extern gps_manager_runtime_t g_gps;
 
 #define GPS_STORE_MAGIC   0x47505356u /* 'GPSV' */
@@ -91,7 +95,7 @@ static wm_SdkResult disk_write_record(const GpsStoredOnDisk *rec, const char *ct
 {
     wm_SdkResult w = gps_file_write(GPS_LAST_VALID_FILE_PATH, rec, (UINT32)sizeof(*rec));
     if (w != WM_SDK_RESULT_SUCCESS)
-        wm_sdk_log_error("GPS store %s: write %s ret=%d", ctx, GPS_LAST_VALID_FILE_PATH, (int)w);
+        LOG_ERROR("GPS store %s: write %s ret=%d", ctx, GPS_LAST_VALID_FILE_PATH, (int)w);
     return w;
 }
 
@@ -112,7 +116,7 @@ static BOOL disk_read_record(GpsStoredOnDisk *out)
 wm_SdkResult gps_storage_clear(void)
 {
     if (wm_sdk_file_delete(GPS_LAST_VALID_FILE_PATH) != WM_SDK_RESULT_SUCCESS)
-        wm_sdk_debug_print("GPS store clear: file absent or delete failed\r\n");
+        LOG_DEBUG("GPS store clear: file absent or delete failed");
     return WM_SDK_RESULT_SUCCESS;
 }
 
@@ -148,7 +152,7 @@ wm_SdkResult gps_storage_save_last_valid(void)
     if (g_gps.last_valid_gps_data.utc_time == 0 ||
         !gps_validate_coordinates(g_gps.last_valid_gps_data.latitude_deg,
                                   g_gps.last_valid_gps_data.longitude_deg)) {
-        wm_sdk_debug_print("GPS store save_last_valid: nothing valid\r\n");
+        LOG_DEBUG("GPS store save_last_valid: nothing valid");
         return WM_SDK_RESULT_SUCCESS;
     }
     return gps_storage_save_packet(&g_gps.last_valid_gps_data);
@@ -178,12 +182,12 @@ static BOOL gps_storage_rtc_utc_is_valid(UINT32 *out_utc)
         return FALSE;
     memset(&now, 0, sizeof(now));
     if (wm_sdk_network_rtc_get_utc_time(&now) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_debug_print("GPS post-boot: RTC read failed\r\n");
+        LOG_DEBUG("GPS post-boot: RTC read failed");
         return FALSE;
     }
     utc = utils_time_to_unix(&now);
     if (utc < GPS_TIME_VALID_MIN_UTC_UNIX) {
-        wm_sdk_debug_print("GPS post-boot: RTC below threshold\r\n");
+        LOG_DEBUG("GPS post-boot: RTC below threshold");
         return FALSE;
     }
     *out_utc = utc;
@@ -195,17 +199,17 @@ static void gps_storage_load_from_disk(void)
     GpsStoredOnDisk rec;
 
     if (!disk_read_record(&rec)) {
-        wm_sdk_debug_print("GPS post-boot: no stored GPS location\r\n");
+        LOG_DEBUG("GPS post-boot: no stored GPS location");
         return;
     }
 
     if (!gps_validate_coordinates(rec.packet.latitude_deg, rec.packet.longitude_deg)) {
-        wm_sdk_log_warning("GPS post-boot: stored coordinates invalid, ignoring");
+        LOG_WARN("GPS post-boot: stored coordinates invalid, ignoring");
         return;
     }
 
     memcpy(&g_gps.last_valid_gps_data, &rec.packet, sizeof(GpsPacket));
-    wm_sdk_log_info("GPS post-boot: loaded stored GPS location from %s", GPS_LAST_VALID_FILE_PATH);
+    LOG_INFO("GPS post-boot: loaded stored GPS location from %s", GPS_LAST_VALID_FILE_PATH);
 }
 
 void gps_storage_handle_post_boot(void)
@@ -214,13 +218,13 @@ void gps_storage_handle_post_boot(void)
         UINT32 now_utc = 0;
 
         if (gps_storage_rtc_utc_is_valid(&now_utc)) {
-            wm_sdk_log_info("GPS post-boot: power-on reset with valid RTC (utc=%lu) - keep stored GPS",
+            LOG_INFO("GPS post-boot: power-on reset with valid RTC (utc=%lu) - keep stored GPS",
                          (unsigned long)now_utc);
             gps_storage_load_from_disk();
             return;
         }
 
-        wm_sdk_log_info("GPS post-boot: power-on reset (RTC invalid) - clear stored GPS location");
+        LOG_INFO("GPS post-boot: power-on reset (RTC invalid) - clear stored GPS location");
         (void)gps_storage_clear();
         return;
     }

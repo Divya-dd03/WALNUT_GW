@@ -7,7 +7,7 @@
  * Walnut adaptation: the reference logs invalid configuration through
  * LOG_ERRC(ERR_SMS_CONFIG_FAILED, ...) (common/error_codes.h + the error-code
  * log sink). Walnut has no error_codes.h and log.h exports no LOG_ERRC, so the
- * calls become wm_sdk_log_error with the reference error-code name kept in the text -
+ * calls become LOG_ERROR with the reference error-code name kept in the text -
  * same as every other module already ported to walnut.
  */
 
@@ -43,20 +43,20 @@ Result sms_config_validate(const void *config)
 
     if (!sms_cfg)
     {
-        wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: NULL config"); /* ERRC */
+        LOG_ERROR("ERR_SMS_CONFIG_FAILED: NULL config"); /* ERRC */
         return RESULT_INVALID_PARAM;
     }
 
     if (sms_cfg->format_mode != 0 && sms_cfg->format_mode != 1)
     {
-        wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: Invalid format_mode: %d (must be 0 or 1)",
+        LOG_ERROR("ERR_SMS_CONFIG_FAILED: Invalid format_mode: %d (must be 0 or 1)",
                 (int)sms_cfg->format_mode); /* ERRC */
         return RESULT_INVALID_PARAM;
     }
 
     if (sms_cfg->urc_timeout_ms == 0 || sms_cfg->urc_timeout_ms > 10000)
     {
-        wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: Invalid urc_timeout_ms: %u (must be 1-10000)",
+        LOG_ERROR("ERR_SMS_CONFIG_FAILED: Invalid urc_timeout_ms: %u (must be 1-10000)",
                 (unsigned)sms_cfg->urc_timeout_ms); /* ERRC */
         return RESULT_INVALID_PARAM;
     }
@@ -69,7 +69,7 @@ SmsConfig *sms_config_get_storage(void)
     const ModuleConfig *module_config = module_manager_get_config(MODULE_ID_SMS);
     if (!module_config || !module_config->config_ptr)
     {
-        wm_sdk_log_error("SMS module config not found");
+        LOG_ERROR("SMS module config not found");
         return NULL;
     }
     return (SmsConfig *)module_config->config_ptr;

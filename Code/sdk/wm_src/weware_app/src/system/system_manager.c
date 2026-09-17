@@ -135,7 +135,7 @@ static void netlight_on_network_connected(const EventData *event, void *user_dat
     g_netlight_connected = TRUE;
     if (g_netlight_pin_ready && gpio_manager_is_ready()) {
         netlight_drive(TRUE);
-        wm_sdk_debug_print("[netlight] Network connected - solid ON\r\n");
+        LOG_DEBUG("[netlight] Network connected - solid ON");
     }
 }
 
@@ -147,7 +147,7 @@ static void netlight_on_network_disconnected(const EventData *event, void *user_
     g_netlight_last_toggle_ticks = SDK_GET_TICKS();
     if (g_netlight_pin_ready && gpio_manager_is_ready())
         netlight_drive(FALSE);
-    wm_sdk_debug_print("[netlight] Network lost - blinking %ums\r\n", (unsigned)NETLIGHT_BLINK_HALF_PERIOD_MS);
+    LOG_DEBUG("[netlight] Network lost - blinking %ums", (unsigned)NETLIGHT_BLINK_HALF_PERIOD_MS);
 }
 
 static void netlight_tick(void)
@@ -263,9 +263,9 @@ static void print_system_status(void)
         default: break;
     }
 
-    wm_sdk_log_info(
+    LOG_INFO(
         "WEWARE STATUS - Uptime: %lu:%02lu:%02lu | FW: %s | HW: %s | App: %s | SDK: WALNUT"
-        " | Reset: %s (code:%lu) | Reboot: %s/%s #%lu | RAM: %s | Flash: %s | CPU: %s\r\n",
+        " | Reset: %s (code:%lu) | Reboot: %s/%s #%lu | RAM: %s | Flash: %s | CPU: %s",
         (unsigned long)hours, (unsigned long)minutes, (unsigned long)secs,
         FIRMWARE_VERSION, HARDWARE_VERSION, APP_VERSION,
         reset_reason_str, (unsigned long)post_boot_handler_get_soc_reset_reason(),
@@ -284,25 +284,25 @@ Result system_manager_init(void)
     (void)logger_init(g_log_config.output);
 
     if (device_utils_init() != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_warning("Device utils init failed, continuing anyway");
+        LOG_WARN("Device utils init failed, continuing anyway");
     }
 
     if (file_system_init() == RESULT_ERROR) {
-        wm_sdk_log_error("File system init failed");
+        LOG_ERROR("File system init failed");
         return RESULT_ERROR;
     }
 
     (void)flash_paths_ensure_directories();
 
     if (post_boot_handler_init() != RESULT_SUCCESS)
-        wm_sdk_log_warning("post_boot_handler init failed, continuing anyway");
+        LOG_WARN("post_boot_handler init failed, continuing anyway");
 
     config_get_current();
     system_config_migrate_from_tcp_if_needed();
     vehicle_state_init();
 
     if (event_manager_init() == RESULT_ERROR) {
-        wm_sdk_log_error("Event manager init failed");
+        LOG_ERROR("Event manager init failed");
         return RESULT_ERROR;
     }
 
@@ -310,14 +310,14 @@ Result system_manager_init(void)
     {
         Result ota_r = ota_manager_init();
         if (ota_r != RESULT_SUCCESS && ota_r != RESULT_ALREADY_INITIALIZED)
-            wm_sdk_log_warning("OTA manager init failed, continuing anyway");
+            LOG_WARN("OTA manager init failed, continuing anyway");
     }
 #else
-    wm_sdk_log_warning("OTA manager disabled at compile time (WEWARE_OTA_ENABLED=0)");
+    LOG_WARN("OTA manager disabled at compile time (WEWARE_OTA_ENABLED=0)");
 #endif
 
     if (reset_handler_init() != RESULT_SUCCESS) {
-        wm_sdk_log_warning("Reset handler init failed, continuing anyway");
+        LOG_WARN("Reset handler init failed, continuing anyway");
     }
 
     /* Walnut event bridge (see note above). Registering before network init
@@ -327,15 +327,15 @@ Result system_manager_init(void)
     if (gpio_manager_init() == RESULT_SUCCESS && board_pin_valid(SDK_GPIO_STATUS_PIN) &&
         gpio_manager_set_direction(SDK_GPIO_STATUS_PIN, GPIO_DIRECTION_OUTPUT) == RESULT_SUCCESS) {
         gpio_manager_set_level(SDK_GPIO_STATUS_PIN, GPIO_LEVEL_HIGH);
-        wm_sdk_debug_print("GPIO status indicator set (pin %u)\r\n", (unsigned)SDK_GPIO_STATUS_PIN);
+        LOG_DEBUG("GPIO status indicator set (pin %u)", (unsigned)SDK_GPIO_STATUS_PIN);
     } else {
-        wm_sdk_debug_print("GPIO status indicator disabled (pin unassigned)\r\n");
+        LOG_DEBUG("GPIO status indicator disabled (pin unassigned)");
     }
 
     if (board_pin_valid(POWER_SRC_SELECT_PIN) &&
         gpio_manager_set_direction(POWER_SRC_SELECT_PIN, GPIO_DIRECTION_OUTPUT) == RESULT_SUCCESS) {
         gpio_manager_set_level(POWER_SRC_SELECT_PIN, GPIO_LEVEL_LOW);
-        wm_sdk_debug_print("Power source select GPIO set (pin %u)\r\n", (unsigned)POWER_SRC_SELECT_PIN);
+        LOG_DEBUG("Power source select GPIO set (pin %u)", (unsigned)POWER_SRC_SELECT_PIN);
     }
 
     if (board_pin_valid(SDK_GPIO_NETLIGHT_PIN) &&
@@ -344,26 +344,26 @@ Result system_manager_init(void)
         g_netlight_connected = FALSE;
         g_netlight_last_toggle_ticks = SDK_GET_TICKS();
         netlight_drive(FALSE);
-        wm_sdk_debug_print("Netlight blue LED on pin %u\r\n", (unsigned)SDK_GPIO_NETLIGHT_PIN);
+        LOG_DEBUG("Netlight blue LED on pin %u", (unsigned)SDK_GPIO_NETLIGHT_PIN);
 
         g_netlight_task = wm_sdk_task_create(netlight_task_entry, NULL, "NETLED",
                                           NULL, NETLIGHT_TASK_STACK, TP_TIMED_ACTIVITY);
         if (g_netlight_task == NULL)
-            wm_sdk_log_warning("Netlight task create failed - falling back to WEMAIN tick (~1s blink)");
+            LOG_WARN("Netlight task create failed - falling back to WEMAIN tick (~1s blink)");
     } else {
-        wm_sdk_debug_print("Netlight disabled (pin unassigned or direction set failed)\r\n");
+        LOG_DEBUG("Netlight disabled (pin unassigned or direction set failed)");
     }
     /* Netlight handlers registered regardless - they no-op without a pin and
      * start driving the LED the moment a pin define is supplied. */
     if (event_manager_register(EVENT_NETWORK_CONNECTED,    netlight_on_network_connected,    NULL, "Netlight") == RESULT_SUCCESS &&
         event_manager_register(EVENT_NETWORK_DISCONNECTED, netlight_on_network_disconnected, NULL, "Netlight") == RESULT_SUCCESS) {
-        wm_sdk_debug_print("Netlight events registered\r\n");
+        LOG_DEBUG("Netlight events registered");
     }
 
     /* TODO(digout): relay digout manager not ported yet. */
 
     if (adc_manager_init() != RESULT_SUCCESS) {
-        wm_sdk_log_warning("ADC manager init failed, continuing anyway");
+        LOG_WARN("ADC manager init failed, continuing anyway");
     } else {
         /* Prime power/charge before any GPS packet (e.g. TCP login+GPS) - avoids charge=OFF from zeroed PowerInfo */
         system_manager_adc_poll();
@@ -373,7 +373,7 @@ Result system_manager_init(void)
     /* TODO(accel): STK8321 accelerometer driver not ported (no walnut I2C
      * transfer API in wm_sdk_*; needs vendor i2cc_*). */
 
-    wm_sdk_log_info("System components initialized");
+    LOG_INFO("System components initialized");
     return RESULT_SUCCESS;
 }
 
@@ -393,7 +393,7 @@ Result system_manager_deinit(void)
     (void)gpio_manager_deinit();
     (void)adc_manager_deinit();
     (void)event_manager_deinit();
-    wm_sdk_log_info("System components deinitialized");
+    LOG_INFO("System components deinitialized");
     return RESULT_SUCCESS;
 }
 
@@ -411,11 +411,11 @@ static void system_manager_adc_poll(void)
     if (adc_manager_get_voltage(ADC_GET_IGNITION, &iv) != RESULT_SUCCESS ||
         adc_manager_get_voltage(ADC_GET_EXTERNAL, &ev) != RESULT_SUCCESS ||
         adc_manager_get_vbat_voltage(&bv) != RESULT_SUCCESS) {
-        wm_sdk_log_warning("[ADC] read failed");
+        LOG_WARN("[ADC] read failed");
         return;
     }
 
-    wm_sdk_log_info("[ADC] ev: %.3fV, iv:%.3fV, bv:%.3fV", ev, iv, bv);
+    LOG_INFO("[ADC] ev: %.3fV, iv:%.3fV, bv:%.3fV", ev, iv, bv);
 
     static BOOL prev_charge_connected = FALSE;
 
@@ -478,7 +478,7 @@ void system_manager_loop_iteration(void)
 #endif
 
     if (utils_get_uptime_seconds() >= UPTIME_SOFT_RESET_THRESHOLD_SEC) {
-        wm_sdk_log_info("Uptime >= 24h, broadcasting soft reset");
+        LOG_INFO("Uptime >= 24h, broadcasting soft reset");
         event_manager_broadcast(EVENT_RESET_SOFT, "System Manager", NULL, 0);
     }
 
@@ -488,6 +488,6 @@ void system_manager_loop_iteration(void)
     }
 
     if (reset_handler_process_deferred_reset()) {
-        wm_sdk_log_info("Deferred reset performed");
+        LOG_INFO("Deferred reset performed");
     }
 }

@@ -49,6 +49,10 @@
 #include "common/queue_manager.h"
 #include "common/utils.h"
 
+#define LOG_TAG "GPS_OPS"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /* ============================================================================
  * File scope
  * ============================================================================ */
@@ -83,6 +87,13 @@ static UINT32 s_last_gnss_power_status_check_uptime = 0u;
 static BOOL   s_cached_gnss_power_on = FALSE;
 
 static BOOL s_pwr_nmea_setup_done = FALSE;
+
+/** TEMPORARY (field debug): set by MOD:SET-GPS-OFF, cleared by MOD:SET-GPS-ON.
+ *  While TRUE the receiver is powered down deliberately, so the config ladder is
+ *  skipped and the parse-fail escalation is suppressed - without that guard the
+ *  60 empty-queue cycles after SET-GPS-OFF would reboot the device a minute later
+ *  (GPS_PARSE_FAIL_SOFT_RESET_COUNT), which would look like the command crashed it. */
+static BOOL s_gps_power_forced_off = FALSE;
 
 /** One-shot guard so a wedged GNSS engine logs the power-on failure once,
  * not every task cycle. Cleared on a successful power-on. */
@@ -173,7 +184,7 @@ static void gps_ops_filter_implausible_jump(GpsPacket *out)
     }
 
     s_implausible_speed_streak++;
-    wm_sdk_log_warning("[gps-parse] implausible speed %d km/h (dist=%dm dt=%us streak=%u)",
+    LOG_WARN("[gps-parse] implausible speed %d km/h (dist=%dm dt=%us streak=%u)",
                     (int)speed_kmh, (int)dist_m, (unsigned)dt_sec,
                     (unsigned)s_implausible_speed_streak);
 
@@ -183,7 +194,7 @@ static void gps_ops_filter_implausible_jump(GpsPacket *out)
         return;
     }
 
-    wm_sdk_log_error("[gps-parse] accepting position after %u implausible-speed samples (glitch/spoof?)",
+    LOG_ERROR("[gps-parse] accepting position after %u implausible-speed samples (glitch/spoof?)",
                   (unsigned)GPS_IMPLAUSIBLE_SPEED_STREAK_ACCEPT);
     s_implausible_speed_streak = 0u;
 }
@@ -193,13 +204,13 @@ static BOOL gps_ops_get_gsm_utc_time(UINT32 *out_utc_time)
     wm_SdkNetworkTime rtc;
 
     if (!out_utc_time) {
-        wm_sdk_log_warning("gsm utc: null out");
+        LOG_WARN("gsm utc: null out");
         return FALSE;
     }
 
     memset(&rtc, 0, sizeof(rtc));
     if (wm_sdk_network_rtc_get_utc_time(&rtc) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_warning("gsm utc: rtc_get_utc_time failed");
+        LOG_WARN("gsm utc: rtc_get_utc_time failed");
         return FALSE;
     }
 
@@ -270,7 +281,7 @@ static BOOL gps_ops_configure_nmea_output(void)
     nr = wm_sdk_gps_enable_nmea_output(GPS_WALNUT_NMEA_DATA_GET_MODE);
     if (nr == WM_SDK_RESULT_SUCCESS) {
         g_gps.gnss_nmea_output_configured = TRUE;
-        wm_sdk_log_info("GNSS NMEA output configured; navdata should refresh");
+        LOG_INFO("GNSS NMEA output configured; navdata should refresh");
         return TRUE;
     }
     if (nr == WM_SDK_RESULT_NOT_SUPPORTED) {
@@ -278,7 +289,7 @@ static BOOL gps_ops_configure_nmea_output(void)
         return TRUE;
     }
 
-    wm_sdk_log_warning("GNSS NMEA output configure failed (%d), retry next cycle", (int)nr);
+    LOG_WARN("GNSS NMEA output configure failed (%d), retry next cycle", (int)nr);
     return FALSE;
 }
 
@@ -294,6 +305,9 @@ static BOOL gps_ops_try_start_nmea_output(void)
 
 BOOL gps_ops_power_on_and_configure_nmea_step(void)
 {
+    if (s_gps_power_forced_off)
+        return FALSE;
+
     if (s_pwr_nmea_setup_done)
         return TRUE;
 
@@ -301,7 +315,7 @@ BOOL gps_ops_power_on_and_configure_nmea_step(void)
 
     if (wm_sdk_gps_set_power_status(1) != WM_SDK_RESULT_SUCCESS) {
         if (!s_power_on_err_logged) {
-            wm_sdk_log_error("GNSS power on failed");
+            LOG_ERROR("GNSS power on failed");
             s_power_on_err_logged = TRUE;
         }
         return FALSE;
@@ -314,8 +328,68 @@ BOOL gps_ops_power_on_and_configure_nmea_step(void)
         return FALSE;
 
     s_pwr_nmea_setup_done = TRUE;
-    wm_sdk_log_info("GNSS power and NMEA ready");
+    LOG_INFO("GNSS power and NMEA ready");
     return TRUE;
+}
+
+/* ----------------------------------------------------------------------------
+ * TEMPORARY manual GNSS power control (MOD:SET-GPS-ON / MOD:SET-GPS-OFF)
+ * -------------------------------------------------------------------------- */
+
+BOOL gps_ops_is_power_forced_off(void)
+{
+    return s_gps_power_forced_off;
+}
+
+Result gps_ops_set_power_enabled(BOOL on)
+{
+    if (on) {
+        if (!s_gps_power_forced_off)
+            return RESULT_SUCCESS;              /* already on - idempotent */
+
+        s_gps_power_forced_off = FALSE;
+
+        /* Re-arm the whole bring-up ladder. wm_sdk_gps_set_power_status(1) runs
+         * wm_gps_power_on(), which re-applies only the SDK defaults
+         * ($POLCFGSYS,193 = GPS|GLO|GAL); the app's own mode/rate/start-mode must
+         * be re-sent or the receiver stays on the SDK mask instead of ours.
+         * Clearing these latches makes gps_ops_power_on_and_configure_nmea_step()
+         * and gps_ops_retry_configuration() replay from the top next task cycle. */
+        s_pwr_nmea_setup_done                 = FALSE;
+        s_power_on_err_logged                 = FALSE;
+        g_gps.gnss_mode_set                   = FALSE;
+        g_gps.gnss_nmea_rate_set              = FALSE;
+        g_gps.gnss_nmea_output_configured     = FALSE;
+        g_gps.gnss_nmea_output_started        = FALSE;
+        g_gps.gnss_start_mode_set             = FALSE;
+        g_gps.gnss_info_report_set            = FALSE;
+        s_gnss_cfg_attempts                   = 0u;
+        s_gnss_cfg_err_logged                 = FALSE;
+        s_last_gnss_power_status_check_uptime = 0u;
+        s_cached_gnss_power_on                = FALSE;
+        s_parse_fail_streak                   = 0u;
+        s_parse_fail_reset_sent               = FALSE;
+        s_no_fix_streak                       = 0u;
+        s_no_fix_logged                       = FALSE;
+
+        LOG_INFO("GPS ON requested; power + config replay on next cycle");
+        return RESULT_SUCCESS;
+    }
+
+    if (s_gps_power_forced_off)
+        return RESULT_SUCCESS;                  /* already off - idempotent */
+
+    if (wm_sdk_gps_set_power_status(0) != WM_SDK_RESULT_SUCCESS) {
+        LOG_ERROR("GPS OFF failed (power status)");
+        return RESULT_ERROR;
+    }
+
+    s_gps_power_forced_off         = TRUE;
+    g_gps.gnss_nmea_output_started = FALSE;
+    memset(&g_gps.current_gps_data, 0, sizeof(g_gps.current_gps_data));
+
+    LOG_INFO("GPS OFF; parse-fail reboot suppressed while off");
+    return RESULT_SUCCESS;
 }
 
 #define GPS_POWER_STATUS_CHECK_GAP_SEC  5u
@@ -348,6 +422,9 @@ static BOOL gps_ops_can_proceed_config(void)
 
 void gps_ops_retry_configuration(void)
 {
+    if (s_gps_power_forced_off)
+        return;
+
     /* Broadcast EVENT_GPS_CONFIGURED once when core config is done: mode, NMEA rate, NMEA output, start mode. */
     {
         BOOL all_configured = g_gps.gnss_mode_set && g_gps.gnss_nmea_rate_set &&
@@ -357,7 +434,7 @@ void gps_ops_retry_configuration(void)
         if (!s_gps_configured_event_sent && all_configured) {
             s_gps_configured_event_sent = TRUE;
             event_manager_broadcast(EVENT_GPS_CONFIGURED, "GPS", NULL, 0);
-            wm_sdk_log_info("GPS configured (all config done)");
+            LOG_INFO("GPS configured (all config done)");
         }
 
         if (all_configured) {
@@ -373,7 +450,7 @@ void gps_ops_retry_configuration(void)
     /* GNSS is powered but config still isn't complete. If it never completes, a
      * config step (mode/rate/start/info set) is persistently failing - log once. */
     if (!s_gnss_cfg_err_logged && ++s_gnss_cfg_attempts >= GPS_GNSS_CONFIG_FAIL_CYCLES) {
-        wm_sdk_log_error("GNSS config stuck: nmea=%d mode=%d rate=%d start=%d info=%d",
+        LOG_ERROR("GNSS config stuck: nmea=%d mode=%d rate=%d start=%d info=%d",
                       g_gps.gnss_nmea_output_configured ? 1 : 0, g_gps.gnss_mode_set ? 1 : 0,
                       g_gps.gnss_nmea_rate_set ? 1 : 0, g_gps.gnss_start_mode_set ? 1 : 0,
                       g_gps.gnss_info_report_set ? 1 : 0);
@@ -388,7 +465,7 @@ void gps_ops_retry_configuration(void)
         UINT32 target_mode = WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_GLO;  /* reference: GPS+GLONASS */
         if (wm_sdk_gps_set_mode(target_mode) == WM_SDK_RESULT_SUCCESS) {
             g_gps.gnss_mode_set = TRUE;
-            wm_sdk_log_info("GNSS mode set (0x%x)", (unsigned)target_mode);
+            LOG_INFO("GNSS mode set (0x%x)", (unsigned)target_mode);
         }
         return;
     }
@@ -397,7 +474,7 @@ void gps_ops_retry_configuration(void)
     if (!g_gps.gnss_nmea_rate_set) {
         if (wm_sdk_gps_set_nmea_rate(GPS_NMEA_RATE_DEFAULT) == WM_SDK_RESULT_SUCCESS) {
             g_gps.gnss_nmea_rate_set = TRUE;
-            wm_sdk_log_info("GNSS nmea rate set (%d)Hz", GPS_NMEA_RATE_DEFAULT);
+            LOG_INFO("GNSS nmea rate set (%d)Hz", GPS_NMEA_RATE_DEFAULT);
         }
         return;
     }
@@ -407,13 +484,13 @@ void gps_ops_retry_configuration(void)
 
         if (!gps_post_boot_is_power_on_reset()) {
             start_mode = SDK_GNSS_START_HOT;
-            wm_sdk_log_info("GNSS start mode HOT (%s)", gps_post_boot_reset_reason_string());
+            LOG_INFO("GNSS start mode HOT (%s)", gps_post_boot_reset_reason_string());
         } else {
             start_mode = g_gps.config->start_mode;
             if (start_mode != SDK_GNSS_START_HOT && start_mode != SDK_GNSS_START_WARM && start_mode != SDK_GNSS_START_COLD) {
                 start_mode = SDK_GNSS_START_WARM;
             }
-            wm_sdk_log_info("GNSS start mode %u (power-on, config)", (unsigned)start_mode);
+            LOG_INFO("GNSS start mode %u (power-on, config)", (unsigned)start_mode);
         }
 
         if (wm_sdk_gps_start_mode(start_mode) == WM_SDK_RESULT_SUCCESS)
@@ -426,9 +503,9 @@ void gps_ops_retry_configuration(void)
         wm_SdkResult ir = wm_sdk_gps_set_gnss_info_period(GPS_GNSS_INFO_PERIOD_S);
         g_gps.gnss_info_report_set = TRUE;
         if (ir == WM_SDK_RESULT_SUCCESS)
-            wm_sdk_log_info("GNSS info periodic report set (%us)", (unsigned)GPS_GNSS_INFO_PERIOD_S);
+            LOG_INFO("GNSS info periodic report set (%us)", (unsigned)GPS_GNSS_INFO_PERIOD_S);
         else if (ir != WM_SDK_RESULT_NOT_SUPPORTED)
-            wm_sdk_log_warning("GNSS info period set failed (%d)", (int)ir);
+            LOG_WARN("GNSS info period set failed (%d)", (int)ir);
         return;
     }
 }
@@ -458,7 +535,7 @@ void gps_ops_open_agps_if_needed(void)
         g_gps.gnss_agps_set = TRUE;
         g_gps.last_agps_open_time = utils_get_uptime_seconds();
         g_gps.last_agps_open_attempt_time = 0;
-        wm_sdk_log_info("A-GPS service opened");
+        LOG_INFO("A-GPS service opened");
         return;
     }
     if (ret == WM_SDK_RESULT_NOT_SUPPORTED) {
@@ -466,13 +543,13 @@ void gps_ops_open_agps_if_needed(void)
          * Mark as done so the reference retry/cooldown loop does not spin. */
         g_gps.gnss_agps_set = TRUE;
         if (!s_agps_not_supported_logged) {
-            wm_sdk_log_info("A-GPS not supported on this receiver (skipped)");
+            LOG_INFO("A-GPS not supported on this receiver (skipped)");
             s_agps_not_supported_logged = TRUE;
         }
         return;
     }
     g_gps.last_agps_open_attempt_time = utils_get_uptime_seconds();
-    wm_sdk_log_error("A-GPS open failed, reason: %d; cooldown %u s",
+    LOG_ERROR("A-GPS open failed, reason: %d; cooldown %u s",
                   (int)ret, (unsigned)GPS_AGPS_FAIL_COOLDOWN_SEC);
 }
 
@@ -489,7 +566,7 @@ void gps_ops_agps_refresh_if_needed(void)
     if ((uptime - g_gps.last_agps_open_time) < GPS_AGPS_VALIDITY_SEC)
         return;
     g_gps.gnss_agps_set = FALSE;
-    wm_sdk_log_info("A-GPS refresh: no fix for %u h, clearing for re-open",
+    LOG_INFO("A-GPS refresh: no fix for %u h, clearing for re-open",
                  (unsigned)((uptime - g_gps.last_agps_open_time) / 3600u));
 }
 
@@ -699,7 +776,7 @@ static BOOL nmea_resolve_latlon(BOOL rmc_ok,
     if (have_rmc && have_gga) {
         dist_m = utils_calculate_gps_distance(rmc_lat_deg, rmc_lon_deg, gga_lat_deg, gga_lon_deg);
         if (dist_m > GPS_NMEA_RMC_GGA_MAX_DIST_M) {
-            wm_sdk_log_warning("[nmea] RMC/GGA mismatch dist=%.1fm rmc=%.6f,%.6f gga=%.6f,%.6f",
+            LOG_WARN("[nmea] RMC/GGA mismatch dist=%.1fm rmc=%.6f,%.6f gga=%.6f,%.6f",
                             (double)dist_m, rmc_lat_deg, rmc_lon_deg, gga_lat_deg, gga_lon_deg);
             return FALSE;
         }
@@ -815,7 +892,7 @@ static int gps_ops_parse_gnrmc_gngga_combined(char *combined, GpsPacket *out)
     if (!nmea_resolve_latlon(rmc_ok, rmc_lat, rmc_ns, rmc_lon, rmc_ew,
                              qual, gga_lat, gga_ns, gga_lon, gga_ew, &lat, &lon)) {
         if (fix_indicated) {
-            wm_sdk_log_warning("[nmea] fix indicated but coordinates rejected (rmc=%d qual=%d)",
+            LOG_WARN("[nmea] fix indicated but coordinates rejected (rmc=%d qual=%d)",
                             rmc_ok ? 1 : 0, qual);
             return 0;
         }
@@ -851,7 +928,7 @@ static int gps_ops_parse_gnrmc_gngga_combined(char *combined, GpsPacket *out)
             out->hdop_x100 = (UINT16)(h * 100.0f);
     }
 
-    wm_sdk_log_info("[nmea] fix_real=%d lat=%.6f lon=%.6f kts=%.2f sats=%u hdop=%u utc=%u\r\n",
+    LOG_INFO("[nmea] fix_real=%d lat=%.6f lon=%.6f kts=%.2f sats=%u hdop=%u utc=%u",
                     out->fix_valid_real, out->latitude_deg, out->longitude_deg,
                     (double)out->speed_knots, (unsigned)out->sats_in_use,
                     (unsigned)out->hdop_x100, (unsigned)out->utc_time);
@@ -904,7 +981,7 @@ static int gps_ops_query_and_parse_from_urc_queue(GpsPacket *out)
 
     BOOL coordinates_valid = gps_validate_coordinates(out->latitude_deg, out->longitude_deg);
     if (out->fix_valid_real && !coordinates_valid)
-        wm_sdk_log_warning("[gps_ops] NMEA fix but invalid coords (lat=%.6f, lon=%.6f)",
+        LOG_WARN("[gps_ops] NMEA fix but invalid coords (lat=%.6f, lon=%.6f)",
                         out->latitude_deg, out->longitude_deg);
 
     if (!coordinates_valid) {
@@ -937,7 +1014,7 @@ static int gps_ops_query_and_parse_navdata(GpsPacket *out)
      * populated and fix_valid says so. Only real failures count as the
      * reference's "get_navdata failed". */
     if (r != WM_SDK_RESULT_SUCCESS && r != WM_SDK_RESULT_BUSY) {
-        wm_sdk_log_error("GPS get_navdata failed\r\n");
+        LOG_ERROR("GPS get_navdata failed");
         return 0;
     }
 
@@ -949,7 +1026,7 @@ static int gps_ops_query_and_parse_navdata(GpsPacket *out)
 
     BOOL coordinates_valid = gps_validate_coordinates(out->latitude_deg, out->longitude_deg);
     if (out->fix_valid_real && !coordinates_valid && !s_fix_coords_bad_logged) {
-        wm_sdk_log_error("[gps_ops] GPS reports fix but coordinates invalid");
+        LOG_ERROR("[gps_ops] GPS reports fix but coordinates invalid");
         s_fix_coords_bad_logged = TRUE;
     }
 
@@ -1035,12 +1112,12 @@ GpsFixTransition gps_ops_process_fix_transition(void)
 
     if (!had_fix && has_fix) {
         had_fix = TRUE;
-        wm_sdk_log_info("GPS fix acquired");
+        LOG_INFO("GPS fix acquired");
         return GPS_FIX_TRANSITION_CONNECTED;
     }
     if (had_fix && !has_fix) {
         had_fix = FALSE;
-        wm_sdk_log_info("GPS fix lost");
+        LOG_INFO("GPS fix lost");
         return GPS_FIX_TRANSITION_DISCONNECTED;
     }
     had_fix = has_fix;
@@ -1051,14 +1128,16 @@ void gps_ops_refresh_current_sample(void)
 {
     if (gps_ops_query_and_parse(&g_gps.current_gps_data) != 1) {
         g_gps.gnss_nmea_output_started = FALSE;
-        if (!s_parse_fail_reset_sent)
-            wm_sdk_log_warning("GPS query and parse failed; clearing current sample");
+        /* Deliberately powered down via MOD:SET-GPS-OFF: an empty queue is the
+         * expected state, so neither warn nor escalate to the soft reset. */
+        if (!s_gps_power_forced_off && !s_parse_fail_reset_sent)
+            LOG_WARN("GPS query and parse failed; clearing current sample");
         memset(&g_gps.current_gps_data, 0, sizeof(g_gps.current_gps_data));
 
-        if (!s_parse_fail_reset_sent) {
+        if (!s_gps_power_forced_off && !s_parse_fail_reset_sent) {
             s_parse_fail_streak++;
             if (s_parse_fail_streak >= GPS_PARSE_FAIL_SOFT_RESET_COUNT) {
-                wm_sdk_log_error("GPS parse failed %u consecutive times; soft reset (%s)",
+                LOG_ERROR("GPS parse failed %u consecutive times; soft reset (%s)",
                               (unsigned)GPS_PARSE_FAIL_SOFT_RESET_COUNT,
                               GPS_PARSE_FAIL_RESET_SOURCE);
                 s_parse_fail_reset_sent = TRUE;
@@ -1083,7 +1162,7 @@ void gps_ops_refresh_current_sample(void)
             s_no_fix_logged         = FALSE;
             s_fix_coords_bad_logged = FALSE;
         } else if (!s_no_fix_logged && ++s_no_fix_streak >= GPS_NO_FIX_LOG_COUNT) {
-            wm_sdk_log_error("No GPS fix for %u samples despite nav data (antenna/sky?)",
+            LOG_ERROR("No GPS fix for %u samples despite nav data (antenna/sky?)",
                           (unsigned)GPS_NO_FIX_LOG_COUNT);
             s_no_fix_logged = TRUE;
         }
@@ -1281,7 +1360,7 @@ wm_SdkResult gps_ops_push_tcp_position_message(const char *data, UINT32 len)
     tcp_config = module_manager_get_config(MODULE_ID_TCP);
     if (!tcp_config || !tcp_config->msg_q || tcp_config->msg_q_config.element_size == 0u) {
         g_gps.packets_dropped++;
-        wm_sdk_log_warning("GPS queue push failed: TCP send queue unavailable (dropped=%u)",
+        LOG_WARN("GPS queue push failed: TCP send queue unavailable (dropped=%u)",
                         (unsigned)g_gps.packets_dropped);
         return WM_SDK_RESULT_ERROR;
     }
@@ -1296,7 +1375,7 @@ wm_SdkResult gps_ops_push_tcp_position_message(const char *data, UINT32 len)
     Result qr = queue_push(tcp_config->msg_q, &tcp_config->msg_q_config, &module_msg);
     if (qr != RESULT_SUCCESS) {
         g_gps.packets_dropped++;
-        wm_sdk_log_warning("GPS queue push failed (%d, dropped=%u)",
+        LOG_WARN("GPS queue push failed (%d, dropped=%u)",
                         (int)qr, (unsigned)g_gps.packets_dropped);
         return WM_SDK_RESULT_ERROR;
     }
@@ -1389,4 +1468,5 @@ void gps_ops_set_runtime_defaults(void)
     s_gnss_cfg_attempts = 0u;
     s_gnss_cfg_err_logged = FALSE;
     s_agps_not_supported_logged = FALSE;
+    s_gps_power_forced_off = FALSE;
 }

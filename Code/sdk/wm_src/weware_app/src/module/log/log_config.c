@@ -2,7 +2,7 @@
  * @file log_config.c
  * @brief Default log module configuration - reference port.
  *
- * Walnut: LOG_OUTPUT_DEBUG (wm_sdk_debug_print / USB VCOM) is the default sink;
+ * Walnut: LOG_OUTPUT_DEBUG (LOG_DEBUG / USB VCOM) is the default sink;
  * the reference default LOG_OUTPUT_UART2 has no walnut backend yet.
  */
 

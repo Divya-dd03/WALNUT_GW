@@ -23,6 +23,10 @@
 #include "common/queue_manager.h"
 #include "common/task_stats.h"
 
+#define LOG_TAG "URC"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /*--------------------------------------------------------------*/
 
 #define URC_TASK_STACK_SIZE  (4096U)
@@ -92,7 +96,7 @@ static ModuleId urc_event_to_module_id(urcEvent_e event)
 
 static void urc_process_message(urcEvent_e event)
 {
-    wm_sdk_log_info("URC EVENT [%d]: %s", (int)event, urc_event_name(event));
+    LOG_INFO("URC EVENT [%d]: %s", (int)event, urc_event_name(event));
 
     ModuleId mid = urc_event_to_module_id(event);
     if (mid >= MODULE_ID_COUNT)
@@ -102,7 +106,7 @@ static void urc_process_message(urcEvent_e event)
     if (!mod || !mod->config.enabled || !mod->config.urc_q)
     {
         /* SIM urc_q is not created yet (SIM module polls); rare events, keep visible */
-        wm_sdk_log_warning("URC not delivered: module %s (id=%u) missing, disabled, or no urc_q",
+        LOG_WARN("URC not delivered: module %s (id=%u) missing, disabled, or no urc_q",
                         (mod && mod->config.name) ? mod->config.name : "(null)",
                         (unsigned)mid);
         return;
@@ -110,7 +114,7 @@ static void urc_process_message(urcEvent_e event)
 
     UINT32 code = (UINT32)event;
     if (queue_push(mod->config.urc_q, &mod->config.urc_q_config, &code) != RESULT_SUCCESS)
-        wm_sdk_log_error("URC queue_push failed for module %s", mod->config.name);
+        LOG_ERROR("URC queue_push failed for module %s", mod->config.name);
 }
 
 
@@ -120,7 +124,7 @@ static void urc_task_entry(void* arg)
 
     if (!g_urc_msgq)
     {
-        wm_sdk_log_error("URC TASK ABORT: URC message queue not created");
+        LOG_ERROR("URC TASK ABORT: URC message queue not created");
         return;
     }
 
@@ -130,11 +134,11 @@ static void urc_task_entry(void* arg)
     wm_SdkResult result = wm_sdk_urc_register(g_urc_msgq, 0xFFFFFFFFu);
     if (result != WM_SDK_RESULT_SUCCESS)
     {
-        wm_sdk_log_error("URC TASK ABORT: Failed to register URC message queue");
+        LOG_ERROR("URC TASK ABORT: Failed to register URC message queue");
         return;
     }
 
-    wm_sdk_log_info("URC task started");
+    LOG_INFO("URC task started");
 
     while (1)
     {
@@ -165,7 +169,7 @@ static void urc_task_entry(void* arg)
 
             if (recv_result != WM_SDK_RESULT_SUCCESS)
             {
-                wm_sdk_log_error("URC TASK ERROR: unexpected recv result %d", (int)recv_result);
+                LOG_ERROR("URC TASK ERROR: unexpected recv result %d", (int)recv_result);
                 break;
             }
 
@@ -177,7 +181,7 @@ static void urc_task_entry(void* arg)
     }
 
     // task should not reach here
-    wm_sdk_log_error("URC task exited unexpectedly");
+    LOG_ERROR("URC task exited unexpectedly");
 }
 
 
@@ -188,7 +192,7 @@ static wm_SdkResult urc_create_queue(void)
     g_urc_msgq = wm_sdk_msgq_create("urcMsgQ", sizeof(UINT32), URC_MSGQ_CAPACITY, 0);
     if (!g_urc_msgq)
     {
-        wm_sdk_log_error("Failed to create URC message queue");
+        LOG_ERROR("Failed to create URC message queue");
         return WM_SDK_RESULT_ERROR;
     }
 
@@ -204,7 +208,7 @@ static wm_SdkResult urc_create_task(void)
                             NULL, URC_TASK_STACK_SIZE, TP_TIMED_ACTIVITY);
     if (!g_urc_task)
     {
-        wm_sdk_log_error("Failed to create URC task");
+        LOG_ERROR("Failed to create URC task");
         return WM_SDK_RESULT_ERROR;
     }
 
@@ -222,7 +226,7 @@ static void urc_set_defaults(void)
 wm_SdkResult urc_processor_init(void)
 {
     if (g_urc_task_initialied) {
-        wm_sdk_log_warning("URC processor already initialized");
+        LOG_WARN("URC processor already initialized");
         return WM_SDK_RESULT_SUCCESS;
     }
 
@@ -230,13 +234,13 @@ wm_SdkResult urc_processor_init(void)
 
     if (urc_create_queue() != WM_SDK_RESULT_SUCCESS)
     {
-        wm_sdk_log_error("Failed to create URC message queue");
+        LOG_ERROR("Failed to create URC message queue");
         return WM_SDK_RESULT_ERROR;
     }
 
     if (urc_create_task() != WM_SDK_RESULT_SUCCESS)
     {
-        wm_sdk_log_error("Failed to create URC task");
+        LOG_ERROR("Failed to create URC task");
         return WM_SDK_RESULT_ERROR;
     }
 
@@ -248,7 +252,7 @@ wm_SdkResult urc_processor_init(void)
 wm_SdkResult urc_processor_deinit(void)
 {
     if (!g_urc_task_initialied) {
-        wm_sdk_log_warning("URC processor not initialized");
+        LOG_WARN("URC processor not initialized");
         return WM_SDK_RESULT_SUCCESS;
     }
 

@@ -32,6 +32,10 @@
 #include "tcp/sdk_functionality_tcp.h"
 #include "tcp/sdk_walnut_socket_poll.h"
 
+#define LOG_TAG "TCP_DRV"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /* Exported by the kernel (core_stub.o) but not declared in lwIP headers */
 extern int lwip_getsockerrno(int s);
 
@@ -175,7 +179,7 @@ int sdk_tcp_connect_host(int fd, const char *host, unsigned short port,
         if (ret == 0 && result != NULL)
             break;
         if ((wm_sdk_get_ticks() - start) >= timeout_ms) {
-            wm_sdk_log_error("TCP connect_host: DNS failed for %s (ret=%d)", host, ret);
+            LOG_ERROR("TCP connect_host: DNS failed for %s (ret=%d)", host, ret);
             return -1;
         }
         wm_sdk_task_sleep(WALNUT_TCP_DNS_RETRY_MS);
@@ -188,7 +192,7 @@ int sdk_tcp_connect_host(int fd, const char *host, unsigned short port,
         int err = lwip_getsockerrno(fd);
         if (err == EINPROGRESS || err == EAGAIN || err == EWOULDBLOCK)
             return 0;   /* attempt under way - outcome arrives as an event */
-        wm_sdk_log_error("TCP connect_host: connect failed (errno=%d)", err);
+        LOG_ERROR("TCP connect_host: connect failed (errno=%d)", err);
         return -1;
     }
     return 0;

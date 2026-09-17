@@ -24,6 +24,10 @@
 #include "common/event_manager.h"
 #include "common/task_stats.h"
 
+#define LOG_TAG "SIM"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /*---------------------------------------------------------------
  * Configuration
  *--------------------------------------------------------------*/
@@ -80,7 +84,7 @@ static weware_sim_status_cb_t g_sim_status_cb   = NULL;
 static void sim_notify_sim_status_change(bool sim_available)
 {
     if (g_sim.last_notified_state == sim_available) {
-        wm_sdk_debug_print("SIM state %s already notified - skip duplicate\r\n",
+        LOG_DEBUG("SIM state %s already notified - skip duplicate",
                      sim_available ? "AVAILABLE" : "UNAVAILABLE");
         return;
     }
@@ -90,7 +94,7 @@ static void sim_notify_sim_status_change(bool sim_available)
     /* Reference sim_notify_sim_status_change: broadcast to all listeners
      * (network restarts its radio on EVENT_SIM_AVAILABLE). The single-slot
      * callback is kept as a walnut extra for non-event consumers. */
-    wm_sdk_log_info("SIM broadcasting status: %s",
+    LOG_INFO("SIM broadcasting status: %s",
                  sim_available ? "EVENT_SIM_AVAILABLE" : "EVENT_SIM_UNAVAILABLE");
     event_manager_broadcast(sim_available ? EVENT_SIM_AVAILABLE : EVENT_SIM_UNAVAILABLE,
                             "SIM Manager", NULL, 0);
@@ -107,7 +111,7 @@ static wm_SdkResult sim_sample_presence(bool *inserted)
     if (result != WM_SDK_RESULT_SUCCESS)
         return result;
 
-    wm_sdk_debug_print("SIM Level=%u\r\n", (unsigned)level);
+    LOG_DEBUG("SIM Level=%u", (unsigned)level);
     *inserted = (level == SIM_DETECT_INSERTED_LEVEL);
     return WM_SDK_RESULT_SUCCESS;
 }
@@ -131,7 +135,7 @@ static void sim_detect_task_entry(void *arg)
 {
     (void)arg;
 
-    wm_sdk_log_info("SIM detect task started\r\n");
+    LOG_INFO("SIM detect task started");
 
     for (;;) {
         /* Task-stall watchdog feed (module_manager_monitor_tasks) */
@@ -184,18 +188,18 @@ static void sim_detect_task_entry(void *arg)
 
 wm_SdkResult weware_sim_init(void)
 {
-    wm_sdk_log_info("Initializing SIM module\r\n");
+    LOG_INFO("Initializing SIM module");
 
     if (g_sim.initialized) {
-        wm_sdk_log_warning("SIM module already initialized\r\n");
+        LOG_WARN("SIM module already initialized");
         return WM_SDK_RESULT_SUCCESS;
     }
 
 #if SIM_DETECT_VIA_GPIO
     if (wm_sdk_gpio_set_direction(SIM_DETECT_GPIO_PIN, SIM_GPIO_DIRECTION_INPUT) == WM_SDK_RESULT_SUCCESS)
-        wm_sdk_debug_print("SIM detect GPIO %u configured as input\r\n", (unsigned)SIM_DETECT_GPIO_PIN);
+        LOG_DEBUG("SIM detect GPIO %u configured as input", (unsigned)SIM_DETECT_GPIO_PIN);
     else
-        wm_sdk_log_error("Failed to configure SIM detect GPIO %u\r\n", (unsigned)SIM_DETECT_GPIO_PIN);
+        LOG_ERROR("Failed to configure SIM detect GPIO %u", (unsigned)SIM_DETECT_GPIO_PIN);
 #endif
 
     if (g_sim_detect_task == NULL) {
@@ -203,7 +207,7 @@ wm_SdkResult weware_sim_init(void)
                                             NULL, SIM_DETECT_TASK_STACK,
                                             TP_TIMED_ACTIVITY);
         if (g_sim_detect_task == NULL) {
-            wm_sdk_log_error("Failed to create SIM detect task\r\n");
+            LOG_ERROR("Failed to create SIM detect task");
             return WM_SDK_RESULT_ERROR;
         }
     }
@@ -251,18 +255,18 @@ wm_SdkResult weware_sim_query_modem_status(wm_SdkSimStatus *status)
     wm_SdkResult result = wm_sdk_sim_get_status(status);
 
     if (result == WM_SDK_RESULT_NOT_SUPPORTED) {
-        wm_sdk_log_warning("SIM status API not supported\r\n");
+        LOG_WARN("SIM status API not supported");
         return WM_SDK_RESULT_NOT_SUPPORTED;
     }
 
     if (result == WM_SDK_RESULT_SUCCESS) {
         s_status_err_logged = false;
-        wm_sdk_log_info("SIM modem status=%d\r\n", (int)*status);
+        LOG_INFO("SIM modem status=%d", (int)*status);
         return WM_SDK_RESULT_SUCCESS;
     }
 
     if (!s_status_err_logged) {
-        wm_sdk_log_error("SIM status API failed (result=%d)\r\n", (int)result);
+        LOG_ERROR("SIM status API failed (result=%d)", (int)result);
         s_status_err_logged = true;
     }
     return result;
@@ -285,15 +289,15 @@ wm_SdkResult weware_sim_check_sim_ready(bool *api_error_out)
     if (result == WM_SDK_RESULT_SUCCESS) {
         s_pin_status_err_logged = false;
         if (cpin == 0) {
-            wm_sdk_debug_print("SIM ready (cpin=%u)\r\n", (unsigned)cpin);
+            LOG_DEBUG("SIM ready (cpin=%u)", (unsigned)cpin);
             return WM_SDK_RESULT_SUCCESS;
         }
-        wm_sdk_debug_print("SIM not ready (cpin=%u)\r\n", (unsigned)cpin);
+        LOG_DEBUG("SIM not ready (cpin=%u)", (unsigned)cpin);
         return WM_SDK_RESULT_ERROR;
     }
 
     if (!s_pin_status_err_logged) {
-        wm_sdk_log_error("SIM pin status API failed (result=%d, cpin=%u)\r\n",
+        LOG_ERROR("SIM pin status API failed (result=%d, cpin=%u)",
                      (int)result, (unsigned)cpin);
         s_pin_status_err_logged = true;
     }
@@ -311,13 +315,13 @@ void weware_sim_set_sim_available(bool sim_available)
     if (g_sim.sim_available == sim_available)
         return;
 
-    wm_sdk_debug_print("SIM status: %s -> %s\r\n",
+    LOG_DEBUG("SIM status: %s -> %s",
                  g_sim.sim_available ? "AVAILABLE" : "UNAVAILABLE",
                  sim_available       ? "AVAILABLE" : "UNAVAILABLE");
 
     /* SIM pulled at runtime (tamper/fault). Edge-only. */
     if (g_sim.sim_available && !sim_available)
-        wm_sdk_log_error("SIM removed at runtime\r\n");
+        LOG_ERROR("SIM removed at runtime");
 
     g_sim.sim_available = sim_available;
     /* Reference: SIM presence IS the module's connected state. */
@@ -333,16 +337,16 @@ wm_SdkResult weware_sim_get_sim_number(char *iccid)
     wm_SdkResult result = wm_sdk_sim_get_iccid(iccid, WEWARE_SIM_ICCID_BUFFER_SIZE);
     if (result == WM_SDK_RESULT_NOT_SUPPORTED) {
         iccid[0] = '\0';
-        wm_sdk_log_warning("ICCID retrieval not supported\r\n");
+        LOG_WARN("ICCID retrieval not supported");
         return WM_SDK_RESULT_NOT_SUPPORTED;
     }
     if (result == WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_debug_print("SIM ICCID: %s\r\n", iccid);
+        LOG_DEBUG("SIM ICCID: %s", iccid);
         return WM_SDK_RESULT_SUCCESS;
     }
 
     iccid[0] = '\0';
-    wm_sdk_log_error("Failed to get SIM ICCID\r\n");
+    LOG_ERROR("Failed to get SIM ICCID");
     return WM_SDK_RESULT_ERROR;
 }
 

@@ -33,6 +33,10 @@
 #include "module/sim/sim.h"
 #include "module/tcp/tcp.h"
 
+#define LOG_TAG "GPS_PKT"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /*---------------------------------------------------------------
  * PLACEHOLDER values - single place to spot and replace when the
  * owning subsystem (power/accel/digout managers) is ported.
@@ -61,7 +65,7 @@ static void write_fixed_point_be(float value, int scale, char *output, int bytes
 int gps_packet_create(char *buffer, int buffer_size, const GpsPacket *gps_data)
 {
     if (!buffer || buffer_size < GPS_PACKET_TOTAL_SIZE || !gps_data) {
-        wm_sdk_log_error("GPS invalid parameters for packet creation");
+        LOG_ERROR("GPS invalid parameters for packet creation");
         return 0;
     }
 

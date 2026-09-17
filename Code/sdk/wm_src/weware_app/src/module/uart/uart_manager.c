@@ -81,7 +81,7 @@
  *
  * Walnut logging: LOG_ERRC(ERR_*, ...) has no walnut counterpart (no
  *   common/error_codes.h, no LOG_ERRC in module/log/log.h); those calls become
- *   wm_sdk_log_error with the reference error-code name kept in the message text. The
+ *   LOG_ERROR with the reference error-code name kept in the message text. The
  *   trailing ERRC markers are preserved so the sites stay greppable.
  *
  * ===========================================================================
@@ -118,6 +118,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#define LOG_TAG "UART"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
 
 /*---------------------------------------------------------------
  * Not-yet-ported dependency gates (see header note)
@@ -305,7 +309,7 @@ static void uart_route_to_module_queue(ModuleId dest_module, const char *address
         /* WALNUT: system/file_transfer is not ported, so there is no
          * g_file_transfer_queue to push into (MODULE_ID_FILE_TRANSFER also has
          * no g_modules[] slot). Drop the reply instead of routing it. */
-        wm_sdk_log_warning("UART: FILE_TRANSFER reply dropped (module not ported): %s",
+        LOG_WARN("UART: FILE_TRANSFER reply dropped (module not ported): %s",
                  message ? message : "");
 #else
         extern Queue *g_file_transfer_queue;
@@ -322,7 +326,7 @@ static void uart_route_to_module_queue(ModuleId dest_module, const char *address
     if (dest_module == MODULE_ID_LOG) {
         const char *a = address ? address : "";
         const char *m = message ? message : "";
-        SDK_DEBUG_PRINT("[UART] UART to LOG %s %s\r\n", a, m);
+        SDK_DEBUG_PRINT("[UART] UART to LOG %s %s", a, m);
         return;
     }
 
@@ -349,7 +353,7 @@ static void uart_route_binary_to_module_queue(ModuleId dest_module, const char *
                                               const UINT8 *data, UINT32 len)
 {
     if (!data || len == 0u || len > MODULE_MESSAGE_INLINE_SIZE) {
-        wm_sdk_log_error("UART binary route: bad len %lu (max %u)",
+        LOG_ERROR("UART binary route: bad len %lu (max %u)",
                   (unsigned long)len, (unsigned)MODULE_MESSAGE_INLINE_SIZE);
         return;
     }
@@ -391,7 +395,7 @@ static void uart_process_received_data(const UINT8 *data, UINT32 len)
 
     /* Enforce maximum buffer size */
     if (needed > UART_MAX_RESPONSE_BUFFER_SIZE) {
-        wm_sdk_log_error("ERR_UART_RX_OVERFLOW: UART RX buffer overflow (drop %lu B)",
+        LOG_ERROR("ERR_UART_RX_OVERFLOW: UART RX buffer overflow (drop %lu B)",
                   (unsigned long)g_uart.response_buffer_pos); /* ERRC */
         g_uart.response_buffer_pos = 0;
         needed = len + 1;
@@ -790,7 +794,7 @@ static void uart_dispatch_binary_frame(const UINT8 *frame, UINT32 total)
         const UINT8 *req_frame = (const UINT8 *)module_message_payload_ptr(g_uart.current_request);
         UINT8 req_cmd = req_frame ? stm_frame_cmd(req_frame) : 0u;
         if (cmd != (UINT8)(req_cmd | STM_CMD_RESP_BIT)) {
-            wm_sdk_log_warning("UART: drop stale STM frame cmd=0x%02X (awaiting resp to 0x%02X)",
+            LOG_WARN("UART: drop stale STM frame cmd=0x%02X (awaiting resp to 0x%02X)",
                      (unsigned)cmd, (unsigned)req_cmd);
             return;
         }
@@ -853,7 +857,7 @@ static void uart_dispatch_binary_frame(const UINT8 *frame, UINT32 total)
             if (dlen == 0u || (UINT32)(4u + dlen) > plen)
                 break;
             if ((UINT32)(1u + dlen) > MODULE_MESSAGE_INLINE_SIZE) {
-                wm_sdk_log_error("gw-health resp DATA too big for inline route (%u bytes)", (unsigned)dlen);
+                LOG_ERROR("gw-health resp DATA too big for inline route (%u bytes)", (unsigned)dlen);
                 break;
             }
             g_uart_shared_buf[0] = (char)(pl[1] ? 1u : 0u);     /* FLAG: 0=immediate TCP, 1=with GPS */
@@ -908,7 +912,7 @@ static void uart_dispatch_binary_frame(const UINT8 *frame, UINT32 total)
         }
 
         default:
-            wm_sdk_debug_print("internal binary resp cmd=0x%02X ignored", (unsigned)cmd);
+            LOG_DEBUG("internal binary resp cmd=0x%02X ignored", (unsigned)cmd);
             break;
         }
         return;
@@ -1072,7 +1076,7 @@ static void uart_task_entry(void *arg)
                 if (write_result == WM_SDK_RESULT_SUCCESS) {
                     g_uart.state = UART_STATE_WAITING_RESPONSE;
                 } else {
-                    wm_sdk_log_error("ERR_UART_TX_FAILED: UART tx failed"); /* ERRC */
+                    LOG_ERROR("ERR_UART_TX_FAILED: UART tx failed"); /* ERRC */
                     uart_reset_state();
                 }
                 break;
@@ -1090,7 +1094,7 @@ static void uart_task_entry(void *arg)
                             g_uart.ping_active = FALSE;
                         }
                     } else {
-                        wm_sdk_log_error("ERR_UART_RSP_TIMEOUT: UART response timed out"); /* ERRC */
+                        LOG_ERROR("ERR_UART_RSP_TIMEOUT: UART response timed out"); /* ERRC */
 #ifdef HEALTH_PACKET_UNAVAILABLE
                         /* WALNUT: health_packet not ported - a missing 0x06 reply
                          * cannot be reported as an all-zero STM half. */
@@ -1186,7 +1190,7 @@ Result uart_manager_deinit(void)
     }
     
     uart_set_defaults();
-    wm_sdk_log_info("UART manager stopped");
+    LOG_INFO("UART manager stopped");
     return RESULT_SUCCESS;
 }
 
@@ -1233,12 +1237,12 @@ Result uart_manager_init(void)
      * once at startup — a toolchain/logic mismatch here would silently corrupt
      * every STM frame, so fail loudly. */
     if (!stm_protocol_selftest()) {
-        wm_sdk_log_error("STM binary protocol self-test FAILED (CRC/frame mismatch)");
+        LOG_ERROR("STM binary protocol self-test FAILED (CRC/frame mismatch)");
     }
 
     g_uart.module = g_modules[MODULE_ID_UART];
     if (!g_uart.module) {
-        wm_sdk_log_error("UART module not found");
+        LOG_ERROR("UART module not found");
         return RESULT_ERROR;
     }
 
@@ -1247,18 +1251,18 @@ Result uart_manager_init(void)
 
     Module *uart_module = module_manager_get_module(MODULE_ID_UART);
     if (!uart_module) {
-        wm_sdk_log_error("UART module lookup failed");
+        LOG_ERROR("UART module lookup failed");
         return RESULT_ERROR;
     }
 
     if (queue_manager_create(&uart_module->config.msg_q_config, &uart_module->config.msg_q) != RESULT_SUCCESS) {
-        wm_sdk_log_error("UART queue create failed");
+        LOG_ERROR("UART queue create failed");
         return RESULT_ERROR;
     }
 
     g_uart.response_buffer = malloc(g_uart.rx_buffer_size);
     if (!g_uart.response_buffer) {
-        wm_sdk_log_error("UART RX buffer alloc failed");
+        LOG_ERROR("UART RX buffer alloc failed");
         queue_manager_destroy(uart_module->config.msg_q, &uart_module->config.msg_q_config);
         uart_module->config.msg_q = NULL;
         return RESULT_ERROR;
@@ -1273,7 +1277,7 @@ Result uart_manager_init(void)
         .flow_control = 0            /* WALNUT-only field: 0 = none, 1 = RTS/CTS */
     };
     if (wm_sdk_uart_set_config(g_uart.config.port, &cfg) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("ERR_UART_CONFIG_ERROR: UART port config failed"); /* ERRC */
+        LOG_ERROR("ERR_UART_CONFIG_ERROR: UART port config failed"); /* ERRC */
         // free(g_uart.response_buffer);
         // g_uart.response_buffer = NULL;
         // queue_manager_destroy(uart_module->config.msg_q, &uart_module->config.msg_q_config);
@@ -1284,7 +1288,7 @@ Result uart_manager_init(void)
     /* reference: sdk_uart_register_callback() - walnut's equivalent delivers the
      * received bytes to the callback itself (see uart_rx_callback). */
     if (wm_sdk_uart_set_rx_callback(g_uart.config.port, uart_rx_callback, NULL) != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("ERR_UART_CB_REG_FAILED: UART RX callback register failed"); /* ERRC */
+        LOG_ERROR("ERR_UART_CB_REG_FAILED: UART RX callback register failed"); /* ERRC */
         free(g_uart.response_buffer);
         g_uart.response_buffer = NULL;
         queue_manager_destroy(uart_module->config.msg_q, &uart_module->config.msg_q_config);
@@ -1302,7 +1306,7 @@ Result uart_manager_init(void)
                                   g_uart.task_stack_size,
                                   g_uart.task_priority);
     if (!g_uart.task) {
-        wm_sdk_log_error("UART task create failed");
+        LOG_ERROR("UART task create failed");
         /* WALNUT: the reference bailed out here leaving the RX callback armed and
          * the request queue allocated. On walnut the callback is registered
          * independently of open/close and keeps firing, so unwind it (and the
@@ -1316,6 +1320,6 @@ Result uart_manager_init(void)
         return RESULT_ERROR;
     }
 
-    wm_sdk_log_info("UART manager ready");
+    LOG_INFO("UART manager ready");
     return RESULT_SUCCESS;
 }

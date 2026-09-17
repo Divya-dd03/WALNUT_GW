@@ -32,6 +32,10 @@
 #include "tcp/sdk_walnut_socket_poll.h"
 #include "tcp/sdk_functionality_network_compat.h"
 
+#define LOG_TAG "TCP_SKT"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /* Exported by the kernel (core_stub.o) but not declared in lwIP headers */
 extern int lwip_getsockerrno(int s);
 
@@ -148,7 +152,7 @@ static void socket_poll_service_slot(SocketPollSlot *slot,
                 slot->cb(fd, errno_to_error_event(so_error), 0);
             } else {
                 slot->err_emitted = 1;   /* log-once latch */
-                wm_sdk_debug_print("TCPMON except-suspect fd=%d gs=%d so_err=%d (ignored)\r\n",
+                LOG_DEBUG("TCPMON except-suspect fd=%d gs=%d so_err=%d (ignored)",
                                 fd, gs_ret, so_error);
             }
         }
@@ -168,7 +172,7 @@ static void socket_poll_service_slot(SocketPollSlot *slot,
             if (gs_ret == 0 && so_error != 0) {
                 /* Handshake failed (RST/refused/unreachable) */
                 slot->connect_pending = 0;
-                wm_sdk_debug_print("TCPMON conn-check fd=%d failed so_err=%d\r\n",
+                LOG_DEBUG("TCPMON conn-check fd=%d failed so_err=%d",
                                 fd, so_error);
                 slot->cb(fd, errno_to_error_event(so_error), 0);
                 slot->last_writable = (unsigned char)writable;
@@ -181,14 +185,14 @@ static void socket_poll_service_slot(SocketPollSlot *slot,
              * once the handshake has actually completed - gate on it and
              * keep waiting while it reports ENOTCONN. */
             if (lwip_getpeername(fd, &peer, &peer_len) != 0) {
-                wm_sdk_debug_print("TCPMON conn-check fd=%d w=1 but not connected yet (errno=%d)\r\n",
+                LOG_DEBUG("TCPMON conn-check fd=%d w=1 but not connected yet (errno=%d)",
                                 fd, lwip_getsockerrno(fd));
                 slot->last_writable = (unsigned char)writable;
                 return;     /* still SYN_SENT - re-check next pass */
             }
 
             slot->connect_pending = 0;
-            wm_sdk_debug_print("TCPMON conn-check fd=%d connected (peer verified)\r\n", fd);
+            LOG_DEBUG("TCPMON conn-check fd=%d connected (peer verified)", fd);
             slot->cb(fd, SDK_NETCONN_EVT_CONNECTED, 0);
         }
         slot->last_writable = (unsigned char)writable;
@@ -213,7 +217,7 @@ static void socket_poll_service_slot(SocketPollSlot *slot,
              * sets the socket's lingering errno to ENOTCONN(107), poisoning
              * every later getsockerrno-based check. Log once, look only. */
             slot->fin_emitted = 1;   /* log-once latch */
-            wm_sdk_debug_print("TCPMON fin-suspect fd=%d io=%d avail=%d (no CLOSE synthesized)\r\n",
+            LOG_DEBUG("TCPMON fin-suspect fd=%d io=%d avail=%d (no CLOSE synthesized)",
                             fd, io_ret, avail);
         }
     }
@@ -254,7 +258,7 @@ static void socket_poll_service_slot(SocketPollSlot *slot,
 static void socket_poll_loop(void *arg)
 {
     (void)arg;
-    wm_sdk_log_info("TCPMON task started");
+    LOG_INFO("TCPMON task started");
 
     for (;;) {
         struct timeval tv;
@@ -303,7 +307,7 @@ static void socket_poll_loop(void *arg)
         }
 
         if (ret < 0) {
-            wm_sdk_debug_print("TCPMON select failed\r\n");
+            LOG_DEBUG("TCPMON select failed");
             wm_sdk_task_sleep(SOCKET_POLL_WAIT_MS);
             continue;
         }
@@ -339,7 +343,7 @@ static int socket_poll_start(void)
                                          NULL, SOCKET_POLL_STACK,
                                          TP_TIMED_ACTIVITY);
     if (g_socket_poll_task == NULL) {
-        wm_sdk_log_error("TCPMON task create failed");
+        LOG_ERROR("TCPMON task create failed");
         return 0;
     }
     g_socket_poll_started = 1;
@@ -368,7 +372,7 @@ int sdk_walnut_socket_with_callback(int domain, int type, int protocol,
 
     slot = socket_poll_alloc();
     if (!slot) {
-        wm_sdk_log_error("TCP no free event-socket slot (max %d)", SOCKET_POLL_MAX);
+        LOG_ERROR("TCP no free event-socket slot (max %d)", SOCKET_POLL_MAX);
         return -1;
     }
 
@@ -378,7 +382,7 @@ int sdk_walnut_socket_with_callback(int domain, int type, int protocol,
 
     /* Non-blocking: connect returns EINPROGRESS, send/recv return EAGAIN */
     if (lwip_ioctl(fd, FIONBIO, &nonblock) != 0) {
-        wm_sdk_log_error("TCP non-blocking setup failed (errno=%d)",
+        LOG_ERROR("TCP non-blocking setup failed (errno=%d)",
                       lwip_getsockerrno(fd));
         lwip_close(fd);
         return -1;
@@ -395,7 +399,7 @@ int sdk_walnut_socket_with_callback(int domain, int type, int protocol,
     slot->sndbuf_last      = cap;
     slot->fd               = fd;    /* last: publishes the slot to TCPMON */
 
-    wm_sdk_debug_print("TCP walnut socket fd=%d (sndbuf=%s cap=%d)\r\n",
+    LOG_DEBUG("TCP walnut socket fd=%d (sndbuf=%s cap=%d)",
                     fd, slot->sndbuf_supported ? "yes" : "no", cap);
     return fd;
 }

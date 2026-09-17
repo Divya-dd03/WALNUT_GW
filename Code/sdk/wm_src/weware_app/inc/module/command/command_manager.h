@@ -52,6 +52,8 @@ typedef enum {
     CMD_FORCED_OTA,
     CMD_GET_OTA_STATUS,
     CMD_PING_STM,
+    CMD_SET_GPS_ON,      /* TEMPORARY (debug) - remove with gps_ops_set_power_enabled() */
+    CMD_SET_GPS_OFF,     /* TEMPORARY (debug) - remove with gps_ops_set_power_enabled() */
     CMD_MAX
 } cmd_enum_t;
 

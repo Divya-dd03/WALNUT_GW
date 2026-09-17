@@ -31,6 +31,24 @@ BOOL gps_ops_power_on_and_configure_nmea_step(void);
 
 void gps_ops_retry_configuration(void);
 
+/**
+ * TEMPORARY (field debug) manual GNSS power control, driven by
+ * MOD:SET-GPS-ON / MOD:SET-GPS-OFF.
+ *
+ * OFF powers the receiver down (wm_sdk_gps_set_power_status(0)) and suppresses
+ * both the parse-fail warning and the 60-cycle soft-reset escalation, so the
+ * device does NOT reboot a minute later. ON re-arms the full bring-up ladder so
+ * power-on AND the app's own config (mode/rate/start) are re-applied - the SDK
+ * alone would only restore its own $POLCFGSYS,193 default.
+ *
+ * Both are idempotent. Remove together with the two command-table entries.
+ * @return RESULT_SUCCESS, or RESULT_ERROR if the SDK refused the power change.
+ */
+Result gps_ops_set_power_enabled(BOOL on);
+
+/** @return TRUE while the receiver is powered down by MOD:SET-GPS-OFF. */
+BOOL gps_ops_is_power_forced_off(void);
+
 /** Open A-GPS once when configured and allowed (walnut: NOT_SUPPORTED stub). */
 void gps_ops_open_agps_if_needed(void);
 

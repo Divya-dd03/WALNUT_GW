@@ -28,6 +28,10 @@
 #include "module/gps/gps_manager.h"
 #include "common/utils.h"
 
+#define LOG_TAG "GPS_CFG"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /* ============================================================================
  * File scope
  * ============================================================================ */
@@ -149,7 +153,7 @@ wm_SdkResult gps_config_set(const char *config_string)
     char *str_copy = utils_strdup_for_tokenization(config_string);
     if (!str_copy)
     {
-        wm_sdk_log_error("GPS config: failed to allocate memory for config string");
+        LOG_ERROR("GPS config: failed to allocate memory for config string");
         return WM_SDK_RESULT_INVALID_PARAM;
     }
 
@@ -190,7 +194,7 @@ wm_SdkResult gps_config_set(const char *config_string)
         current_index = utils_config_key_to_index(key_buf, s_gps_cfg_keys,
                                                   sizeof(s_gps_cfg_keys) / sizeof(s_gps_cfg_keys[0]));
         if (current_index < 0) {
-            wm_sdk_log_error("Unknown GPS config key: %s", key_buf);
+            LOG_ERROR("Unknown GPS config key: %s", key_buf);
             result = WM_SDK_RESULT_INVALID_PARAM;
             break;
         }
@@ -207,7 +211,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             int value = atoi(value_str);
             if (value <= 0)
             {
-                wm_sdk_log_error("Invalid ign_on_interval_sec: %s (must be > 0)", value_str);
+                LOG_ERROR("Invalid ign_on_interval_sec: %s (must be > 0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
                 break;
             }
@@ -220,7 +224,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             int value = atoi(value_str);
             if (value <= 0)
             {
-                wm_sdk_log_error("Invalid ign_off_interval_sec: %s (must be > 0)", value_str);
+                LOG_ERROR("Invalid ign_off_interval_sec: %s (must be > 0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
                 break;
             }
@@ -233,7 +237,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             float value = (float)atof(value_str);
             if (value < 0.0f || value > 180.0f)
             {
-                wm_sdk_log_error("Invalid angle_threshold_deg: %s (must be 0-180)", value_str);
+                LOG_ERROR("Invalid angle_threshold_deg: %s (must be 0-180)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
                 break;
             }
@@ -246,7 +250,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             float value = (float)atof(value_str);
             if (value < 0.0f)
             {
-                wm_sdk_log_error("Invalid distance_threshold_m: %s (must be >= 0)", value_str);
+                LOG_ERROR("Invalid distance_threshold_m: %s (must be >= 0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
                 break;
             }
@@ -266,7 +270,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             }
             else
             {
-                wm_sdk_log_error("Invalid enable_angle_trigger: %s (must be TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid enable_angle_trigger: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -284,7 +288,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             }
             else
             {
-                wm_sdk_log_error("Invalid enable_distance_trigger: %s (must be TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid enable_distance_trigger: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -302,7 +306,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             }
             else
             {
-                wm_sdk_log_error("Invalid enable_agps: %s (must be TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid enable_agps: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -352,7 +356,7 @@ wm_SdkResult gps_config_set(const char *config_string)
 
             if (!valid_mode)
             {
-                wm_sdk_log_error("Invalid start_mode: %s (must be 0/HOT, 1/WARM, or 2/COLD)", value_str);
+                LOG_ERROR("Invalid start_mode: %s (must be 0/HOT, 1/WARM, or 2/COLD)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             else
@@ -370,7 +374,7 @@ wm_SdkResult gps_config_set(const char *config_string)
                 temp_send_last_valid_on_boot_no_fix = FALSE;
             else
             {
-                wm_sdk_log_error("Invalid send_last_valid_on_boot_no_fix: %s (TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid send_last_valid_on_boot_no_fix: %s (TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -384,7 +388,7 @@ wm_SdkResult gps_config_set(const char *config_string)
                 temp_send_last_valid_on_ign_off_no_movement = FALSE;
             else
             {
-                wm_sdk_log_error("Invalid send_last_valid_on_ign_off_no_movement: %s (TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid send_last_valid_on_ign_off_no_movement: %s (TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -398,7 +402,7 @@ wm_SdkResult gps_config_set(const char *config_string)
                 temp_send_last_valid_on_no_fix = FALSE;
             else
             {
-                wm_sdk_log_error("Invalid send_last_valid_on_no_fix: %s (TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid send_last_valid_on_no_fix: %s (TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -408,7 +412,7 @@ wm_SdkResult gps_config_set(const char *config_string)
         {
             if (!gps_config_parse_time_source(value_str, &temp_time_source))
             {
-                wm_sdk_log_error("Invalid time_source: %s (must be AUTO/GPS/GSM or 0/1/2)", value_str);
+                LOG_ERROR("Invalid time_source: %s (must be AUTO/GPS/GSM or 0/1/2)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -422,7 +426,7 @@ wm_SdkResult gps_config_set(const char *config_string)
                 temp_agps_ref = FALSE;
             else
             {
-                wm_sdk_log_error("Invalid agps_ref: %s (must be TRUE/FALSE/1/0)", value_str);
+                LOG_ERROR("Invalid agps_ref: %s (must be TRUE/FALSE/1/0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             break;
@@ -434,7 +438,7 @@ wm_SdkResult gps_config_set(const char *config_string)
             float value = strtof(value_str, &end);
             if (end == value_str || (end && *end != '\0') || value < 0.0f)
             {
-                wm_sdk_log_error("Invalid speed_filter_kmh: %s (must be >= 0)", value_str);
+                LOG_ERROR("Invalid speed_filter_kmh: %s (must be >= 0)", value_str);
                 result = WM_SDK_RESULT_INVALID_PARAM;
             }
             else
@@ -511,7 +515,7 @@ wm_SdkResult gps_config_set(const char *config_string)
         if (start_mode_changed)
         {
             g_gps.gnss_start_mode_set = FALSE;
-            wm_sdk_log_info("GPS start_mode changed, will be reapplied on next configuration cycle");
+            LOG_INFO("GPS start_mode changed, will be reapplied on next configuration cycle");
         }
     }
 
@@ -520,11 +524,11 @@ wm_SdkResult gps_config_set(const char *config_string)
         /* TODO(gps): reference saves the full config file here
          * (config_get_current + config_save_to_file); config persistence
          * is not ported yet, so changes are RAM-only. */
-        wm_sdk_log_info("GPS config applied (RAM only; file persistence TODO)");
+        LOG_INFO("GPS config applied (RAM only; file persistence TODO)");
     }
 
     if (result != WM_SDK_RESULT_SUCCESS)
-        wm_sdk_log_error("GPS config rejected (invalid parameter)");
+        LOG_ERROR("GPS config rejected (invalid parameter)");
 
     utils_free_tokenization(str_copy);
     return result;
@@ -544,7 +548,7 @@ wm_SdkResult gps_config_validate(const GpsConfig *config)
     /* Validate IGN intervals */
     if (config->ign_on_interval_sec <= 0 || config->ign_off_interval_sec <= 0)
     {
-        wm_sdk_log_error("Invalid IGN intervals: ign_on=%d, ign_off=%d (must be > 0)",
+        LOG_ERROR("Invalid IGN intervals: ign_on=%d, ign_off=%d (must be > 0)",
                       config->ign_on_interval_sec, config->ign_off_interval_sec);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
@@ -552,14 +556,14 @@ wm_SdkResult gps_config_validate(const GpsConfig *config)
     /* Validate thresholds */
     if (config->angle_threshold_deg < 0.0f || config->angle_threshold_deg > 180.0f)
     {
-        wm_sdk_log_error("Invalid angle_threshold_deg: %d (must be 0-180)",
+        LOG_ERROR("Invalid angle_threshold_deg: %d (must be 0-180)",
                       (int)config->angle_threshold_deg);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     if (config->distance_threshold_m < 0.0f)
     {
-        wm_sdk_log_error("Invalid distance_threshold_m: %d (must be >= 0)",
+        LOG_ERROR("Invalid distance_threshold_m: %d (must be >= 0)",
                       (int)config->distance_threshold_m);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
@@ -569,7 +573,7 @@ wm_SdkResult gps_config_validate(const GpsConfig *config)
         config->start_mode != SDK_GNSS_START_WARM &&
         config->start_mode != SDK_GNSS_START_COLD)
     {
-        wm_sdk_log_error("Invalid start_mode: %u (must be HOT/WARM/COLD)",
+        LOG_ERROR("Invalid start_mode: %u (must be HOT/WARM/COLD)",
                       (unsigned)config->start_mode);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
@@ -578,13 +582,13 @@ wm_SdkResult gps_config_validate(const GpsConfig *config)
         config->time_source != GPS_TIME_SOURCE_GPS &&
         config->time_source != GPS_TIME_SOURCE_GSM)
     {
-        wm_sdk_log_error("Invalid time_source: %d (must be AUTO/GPS/GSM)", (int)config->time_source);
+        LOG_ERROR("Invalid time_source: %d (must be AUTO/GPS/GSM)", (int)config->time_source);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     if (config->speed_filter_kmh < 0.0f)
     {
-        wm_sdk_log_error("Invalid speed_filter_kmh: %d (must be >= 0)", (int)config->speed_filter_kmh);
+        LOG_ERROR("Invalid speed_filter_kmh: %d (must be >= 0)", (int)config->speed_filter_kmh);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
 
@@ -636,13 +640,13 @@ wm_SdkResult gps_config_get_string(char *buffer, size_t buffer_size)
     /* Check if buffer was large enough */
     if (len < 0)
     {
-        wm_sdk_log_error("Failed to format GPS config string");
+        LOG_ERROR("Failed to format GPS config string");
         return WM_SDK_RESULT_ERROR;
     }
 
     if ((size_t)len >= buffer_size)
     {
-        wm_sdk_log_error("Buffer too small for GPS config string (needed %d, got %u)",
+        LOG_ERROR("Buffer too small for GPS config string (needed %d, got %u)",
                       len, (unsigned)buffer_size);
         return WM_SDK_RESULT_ERROR;
     }

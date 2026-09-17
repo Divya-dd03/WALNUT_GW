@@ -68,7 +68,7 @@
  *
  * Walnut logging: LOG_ERRC(ERR_*, ...) has no walnut counterpart (no
  * common/error_codes.h, no LOG_ERRC in module/log/log.h); those calls become
- * wm_sdk_log_error with the reference error-code name kept in the message text. The
+ * LOG_ERROR with the reference error-code name kept in the message text. The
  * trailing ERRC markers are preserved so the sites stay greppable.
  */
 
@@ -200,7 +200,7 @@ static void sms_park_incoming(const wm_SdkSmsMessage *msg)
     }
 
     if (!g_sms.module || g_sms.module->config.urc_q == NULL) {
-        wm_sdk_log_error("ERR_SMS_MISSED: inbound SMS dropped, urc_q unavailable"); /* ERRC */
+        LOG_ERROR("ERR_SMS_MISSED: inbound SMS dropped, urc_q unavailable"); /* ERRC */
         return;
     }
 
@@ -216,7 +216,7 @@ static void sms_park_incoming(const wm_SdkSmsMessage *msg)
 
     /* The raw +CMGR response must fit SMS_URC_TEXT_MAX or the body is cut. */
     if (raw_len >= SMS_URC_TEXT_MAX) {
-        wm_sdk_log_warning("SMS>rx3 TRUNCATED raw %u -> %u bytes (idx=%ld) - body may be cut",
+        LOG_WARN("SMS>rx3 TRUNCATED raw %u -> %u bytes (idx=%ld) - body may be cut",
                         (unsigned)raw_len, (unsigned)(SMS_URC_TEXT_MAX - 1U),
                         (long)msg->index);
     }
@@ -224,11 +224,11 @@ static void sms_park_incoming(const wm_SdkSmsMessage *msg)
     if (queue_push(g_sms.module->config.urc_q,
                    &g_sms.module->config.urc_q_config,
                    &urc_el) != RESULT_SUCCESS) {
-        wm_sdk_log_error("ERR_SMS_MISSED: inbound SMS dropped, urc_q push failed"); /* ERRC */
+        LOG_ERROR("ERR_SMS_MISSED: inbound SMS dropped, urc_q push failed"); /* ERRC */
         return;
     }
 
-    wm_sdk_debug_print("SMS>rx3 parked to urc_q idx=%ld raw_len=%u\r\n",
+    LOG_DEBUG("SMS>rx3 parked to urc_q idx=%ld raw_len=%u",
                     (long)msg->index, (unsigned)raw_len);
 }
 
@@ -252,13 +252,13 @@ static void sms_flush_temp_queue(void)
         return;   /* silent: this runs every task cycle, do not log the idle case */
     }
 
-    wm_sdk_debug_print("SMS>rx1 sdk queue: %u event(s) pending\r\n", (unsigned)msgcount);
+    LOG_DEBUG("SMS>rx1 sdk queue: %u event(s) pending", (unsigned)msgcount);
 
     while (msgcount > 0) {
         wm_SdkSmsMessage msg = {0};
         if (wm_sdk_msgq_recv(g_temp_msg_queue, &msg, 0) == WM_SDK_RESULT_SUCCESS) {
             /* type: 0=INCOMING 1=READ_RESULT 2=DELETE_RESULT */
-            wm_sdk_debug_print("SMS>rx2 evt type=%d status=%d idx=%ld text=%s\r\n",
+            LOG_DEBUG("SMS>rx2 evt type=%d status=%d idx=%ld text=%s",
                             (int)msg.type, (int)msg.status, (long)msg.index,
                             msg.text ? msg.text : "(none)");
             sms_park_incoming(&msg);      /* walnut addition: keep inbound SMS */
@@ -290,10 +290,10 @@ static void sms_log_store_status(const char *when)
 
     wm_SdkResult ret = wm_sdk_sms_get_storage_status(store, sizeof(store), &used, &total);
     if (ret == WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_info("SMS store %s: %u/%u used (%s)",
+        LOG_INFO("SMS store %s: %u/%u used (%s)",
                      store, (unsigned)used, (unsigned)total, when ? when : "");
     } else {
-        wm_sdk_log_warning("SMS store status unavailable (%s): %d",
+        LOG_WARN("SMS store status unavailable (%s): %d",
                         when ? when : "", (int)ret);
     }
 }
@@ -322,11 +322,11 @@ static BOOL sms_purge_store(void)
 
     wm_SdkResult ret = wm_sdk_sms_get_storage_status(store, sizeof(store), &used, &total);
     if (ret != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_warning("SMS purge: storage query failed: %d", (int)ret);
+        LOG_WARN("SMS purge: storage query failed: %d", (int)ret);
         return FALSE;
     }
 
-    wm_sdk_debug_print("SMS purge: store %s %u/%u used\r\n",
+    LOG_DEBUG("SMS purge: store %s %u/%u used",
                     store, (unsigned)used, (unsigned)total);
 
     if (used == 0U) {
@@ -348,7 +348,7 @@ static BOOL sms_purge_store(void)
         }
     }
 
-    wm_sdk_debug_print("SMS purge: deleted %u of %u\r\n",
+    LOG_DEBUG("SMS purge: deleted %u of %u",
                     (unsigned)deleted, (unsigned)used);
     return (deleted >= used) ? TRUE : FALSE;
 }
@@ -369,19 +369,19 @@ static void sms_forward_inbound(const sms_message_t *sms)
      * bad reply back to the command that caused it means counting characters. */
     Result rc = command_manager_accept_request(&cmd_request);
 
-    wm_sdk_debug_print("SMS>rx8 -> CMD from='%s' cmd[%u]='%s' rc=%d\r\n",
+    LOG_DEBUG("SMS>rx8 -> CMD from='%s' cmd[%u]='%s' rc=%d",
                     cmd_request.address, (unsigned)cmd_request.data_len,
                     cmd_request.message, (int)rc);
 
     if (rc != RESULT_SUCCESS)
-        wm_sdk_log_error("ERR_SMS_MISSED: Failed to queue inbound SMS command"); /* ERRC */
+        LOG_ERROR("ERR_SMS_MISSED: Failed to queue inbound SMS command"); /* ERRC */
 }
 
 static BOOL sms_is_valid_sender(const char *num)
 {
     if (!num || !num[0] || strcmp(num, "UNKNOWN") == 0)
     {
-        wm_sdk_log_error("ERR_SMS_UNKNOWN_NUMBER"); /* ERRC */
+        LOG_ERROR("ERR_SMS_UNKNOWN_NUMBER"); /* ERRC */
         return FALSE;
     }
 
@@ -390,7 +390,7 @@ static BOOL sms_is_valid_sender(const char *num)
         char c = *p;
         if (!(isdigit((unsigned char)c) || strchr("+- ()", c)))
         {
-            wm_sdk_log_error("ERR_SMS_UNKNOWN_NUMBER"); /* ERRC */
+            LOG_ERROR("ERR_SMS_UNKNOWN_NUMBER"); /* ERRC */
             return FALSE;
         }
     }
@@ -402,7 +402,7 @@ static BOOL sms_is_valid_content(const char *msg)
     size_t len = msg ? strlen(msg) : 0;
     return (len > 0 && len <= SMS_MANAGER_MAX_MESSAGE_LENGTH)
                ? TRUE
-               : (wm_sdk_log_error("ERR_SMS_INVALID_CONTENT") /* ERRC */, FALSE);
+               : (LOG_ERROR("ERR_SMS_INVALID_CONTENT") /* ERRC */, FALSE);
 }
 
 /*===============================================================
@@ -413,7 +413,7 @@ Result sms_manager_send(const char *recipient, const char *message)
     if (!g_sms.module || !g_sms.module->status.initialized ||
         !recipient || !message || !g_sms.module->config.msg_q)
     {
-        wm_sdk_log_error("ERR_SMS_SEND_FAILED"); /* ERRC */
+        LOG_ERROR("ERR_SMS_SEND_FAILED"); /* ERRC */
         return RESULT_ERROR;
     }
 
@@ -423,7 +423,7 @@ Result sms_manager_send(const char *recipient, const char *message)
     if (recipient_len >= sizeof(g_sms_send_buffer.address) ||
         message_len >= sizeof(g_sms_send_buffer.message))
     {
-        wm_sdk_log_error("ERR_SMS_SEND_FAILED"); /* ERRC */
+        LOG_ERROR("ERR_SMS_SEND_FAILED"); /* ERRC */
         return RESULT_ERROR;
     }
 
@@ -431,13 +431,13 @@ Result sms_manager_send(const char *recipient, const char *message)
     g_sms_send_buffer.source_module = MODULE_ID_CMD;
     g_sms_send_buffer.destination_module = MODULE_ID_SMS;
     if (utils_strncpy_safe(g_sms_send_buffer.address, recipient, sizeof(g_sms_send_buffer.address)) < 0) {
-        wm_sdk_log_error("ERR_SMS_SEND_FAILED"); /* ERRC */
+        LOG_ERROR("ERR_SMS_SEND_FAILED"); /* ERRC */
         return RESULT_ERROR;
     }
     {
         int n = utils_strncpy_safe(g_sms_send_buffer.message, message, sizeof(g_sms_send_buffer.message));
         if (n < 0) {
-            wm_sdk_log_error("ERR_SMS_SEND_FAILED"); /* ERRC */
+            LOG_ERROR("ERR_SMS_SEND_FAILED"); /* ERRC */
             return RESULT_ERROR;
         }
         g_sms_send_buffer.data_len = (UINT32)n;
@@ -446,7 +446,7 @@ Result sms_manager_send(const char *recipient, const char *message)
     return (queue_push(g_sms.module->config.msg_q,
                        &g_sms.module->config.msg_q_config,
                        &g_sms_send_buffer) == RESULT_SUCCESS) ?
-                       RESULT_SUCCESS : ( wm_sdk_log_error("ERR_SMS_SEND_FAILED") /* ERRC */ , RESULT_ERROR);
+                       RESULT_SUCCESS : ( LOG_ERROR("ERR_SMS_SEND_FAILED") /* ERRC */ , RESULT_ERROR);
 }
 
 Result sms_manager_delete(int index)
@@ -455,7 +455,7 @@ Result sms_manager_delete(int index)
         return RESULT_ERROR;
 
     if (g_temp_msg_queue == NULL) {
-        wm_sdk_log_error("Temporary message queue not initialized");
+        LOG_ERROR("Temporary message queue not initialized");
         return RESULT_ERROR;
     }
 
@@ -469,7 +469,7 @@ Result sms_manager_delete(int index)
     g_sms.stats.delete_errors++;
     /* Expected for an inbound message: the kernel's wm_sms_task already deleted
      * it after dispatching the incoming callback (see sms_process_urc). */
-    wm_sdk_log_warning("SMS delete index %d failed (%d) - may already be gone",
+    LOG_WARN("SMS delete index %d failed (%d) - may already be gone",
                     index, (int)result); /* ERRC ERR_SMS_DELETE_FAILED */
     return RESULT_ERROR;
 }
@@ -482,7 +482,7 @@ Result sms_manager_set_format_mode(int mode)
     g_sms.config->format_mode = mode;
     wm_SdkResult result = wm_sdk_sms_set_format((UINT8)mode);
     return (result == WM_SDK_RESULT_SUCCESS) ?
-                RESULT_SUCCESS : (wm_sdk_log_error("ERR_SMS_CONFIG_FAILED") /* ERRC */ , RESULT_ERROR);
+                RESULT_SUCCESS : (LOG_ERROR("ERR_SMS_CONFIG_FAILED") /* ERRC */ , RESULT_ERROR);
 }
 
 /**
@@ -526,7 +526,7 @@ static void sms_send_task(void *arg)
                    urc_popped > 0U) {
                 /* reference: urc_el.hdr.msg_id == SDK_MSG_URC &&
                  *            urc_el.hdr.arg1 == SDK_URC_SMS_MASK */
-                wm_sdk_debug_print("SMS>rx4 urc_q pop type=%d idx=%ld\r\n",
+                LOG_DEBUG("SMS>rx4 urc_q pop type=%d idx=%ld",
                                 (int)urc_el.hdr.type, (long)urc_el.hdr.index);
                 if (urc_el.hdr.type == WM_SDK_SMS_EVT_INCOMING) {
                     urc_el.hdr.text = urc_el.arg3_inline;   /* reference: hdr.arg3 */
@@ -551,7 +551,7 @@ static void sms_send_task(void *arg)
             /* Everything the send queue handed us, before any interpretation:
              * who produced it, the destination, the payload length and whether
              * it is inline or a heap buffer. */
-            wm_sdk_debug_print("SMS>tx1 msg_q pop src=%d dst=%d addr='%s' len=%u dyn=%d\r\n",
+            LOG_DEBUG("SMS>tx1 msg_q pop src=%d dst=%d addr='%s' len=%u dyn=%d",
                             (int)msg.source_module, (int)msg.destination_module,
                             recipient ? recipient : "(null)",
                             (unsigned)message_len, (int)msg.use_dynamic_buffer);
@@ -565,13 +565,13 @@ static void sms_send_task(void *arg)
                 else
                 {
                     g_sms.stats.send_errors++;
-                    wm_sdk_log_error("ERR_SMS_SEND_FAILED"); /* ERRC */
+                    LOG_ERROR("ERR_SMS_SEND_FAILED"); /* ERRC */
                 }
             }
             else
             {
                 g_sms.stats.send_errors++;
-                wm_sdk_log_error("ERR_SMS_SEND_FAILED"); /* ERRC */
+                LOG_ERROR("ERR_SMS_SEND_FAILED"); /* ERRC */
             }
             if (msg.use_dynamic_buffer && msg.dynamic_buffer)
             {
@@ -605,14 +605,14 @@ static Result sms_send_internal(const char *recipient, const char *message, UINT
      * by sms_configure()/sms_manager_set_format_mode() via AT+CMGF; walnut's
      * send takes no per-message format argument. */
     if (message_len > SMS_MANAGER_MAX_MESSAGE_LENGTH) {
-        wm_sdk_log_error("ERR_SMS_SEND_FAILED: body %u > %d chars",
+        LOG_ERROR("ERR_SMS_SEND_FAILED: body %u > %d chars",
                   (unsigned)message_len, SMS_MANAGER_MAX_MESSAGE_LENGTH); /* ERRC */
         return RESULT_ERROR;
     }
 
     char text[SMS_MANAGER_MAX_MESSAGE_LENGTH + 1];
     if (utils_memcpy_safe(text, sizeof(text), message, (size_t)message_len) < 0) {
-        wm_sdk_log_error("ERR_SMS_SEND_FAILED: body copy failed"); /* ERRC */
+        LOG_ERROR("ERR_SMS_SEND_FAILED: body copy failed"); /* ERRC */
         return RESULT_ERROR;
     }
     text[message_len] = '\0';
@@ -625,7 +625,7 @@ static Result sms_send_internal(const char *recipient, const char *message, UINT
      * prefixed to a reply): if the junk is already visible here the corruption
      * is upstream (command manager / SMS_SEND_Q), if not it is inside
      * wm_sms_send_text. */
-    wm_sdk_debug_print("SMS>tx2 body to=%s [%u]: '%s'\r\n",
+    LOG_DEBUG("SMS>tx2 body to=%s [%u]: '%s'",
                     recipient, (unsigned)message_len, text);
 
     /* wm_sdk_sms_send() blocks for the whole AT+CMGS exchange. Bracketing it makes
@@ -633,18 +633,18 @@ static Result sms_send_internal(const char *recipient, const char *message, UINT
      * the modem's '>' prompt (see the CMGS-prompt note in the progress doc),
      * and gives the elapsed time for the 60 s task-stall watchdog question. */
     UINT32 t0 = utils_monotonic_ms_now();
-    wm_sdk_debug_print("SMS>tx3 wm_sdk_sms_send ENTER (AT+CMGS window opens)\r\n");
+    LOG_DEBUG("SMS>tx3 wm_sdk_sms_send ENTER (AT+CMGS window opens)");
     wm_SdkResult result = wm_sdk_sms_send(recipient, text);
-    wm_sdk_debug_print("SMS>tx4 wm_sdk_sms_send EXIT rc=%d after %u ms\r\n",
+    LOG_DEBUG("SMS>tx4 wm_sdk_sms_send EXIT rc=%d after %u ms",
                     (int)result, (unsigned)utils_monotonic_ms_elapsed(t0));
 
     if (result == WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_info("SMS sent to %s (%u chars, %u ms)",
+        LOG_INFO("SMS sent to %s (%u chars, %u ms)",
                      recipient, (unsigned)message_len,
                      (unsigned)utils_monotonic_ms_elapsed(t0));
         return RESULT_SUCCESS;
     }
-    wm_sdk_log_error("ERR_SMS_SEND_FAILED: to %s, result %d (%u ms)",
+    LOG_ERROR("ERR_SMS_SEND_FAILED: to %s, result %d (%u ms)",
                   recipient, (int)result,
                   (unsigned)utils_monotonic_ms_elapsed(t0)); /* ERRC */
     return RESULT_ERROR;
@@ -656,13 +656,13 @@ static Result sms_send_internal(const char *recipient, const char *message, UINT
 static void sms_process_urc(const wm_SdkSmsMessage *msg)
 {
     if (!msg) {
-        wm_sdk_debug_print("SMS URC: null message\r\n");
+        LOG_DEBUG("SMS URC: null message");
         return;
     }
 
     /* reference: if (msg->arg2 != SDK_URC_NEW_MSG_IND) */
     if (msg->type != WM_SDK_SMS_EVT_INCOMING) {
-        wm_sdk_debug_print("Ignoring non-new-message SMS URC\r\n");
+        LOG_DEBUG("Ignoring non-new-message SMS URC");
         return;
     }
 
@@ -672,13 +672,13 @@ static void sms_process_urc(const wm_SdkSmsMessage *msg)
      * its URC carried only that text. */
     int index = (int)msg->index;
     if (index <= 0) {
-        wm_sdk_log_warning("SMS URC: invalid index parsed: %d", index);
+        LOG_WARN("SMS URC: invalid index parsed: %d", index);
         return;
     }
 
     /* The complete raw +CMGR response as received, before parsing - this is
      * what sms_extract_fields() has to work with. */
-    wm_sdk_debug_print("SMS>rx5 process idx=%d raw='%s'\r\n",
+    LOG_DEBUG("SMS>rx5 process idx=%d raw='%s'",
                     index, msg->text ? msg->text : "(null)");
 
     sms_message_t sms = {0};
@@ -695,18 +695,18 @@ static void sms_process_urc(const wm_SdkSmsMessage *msg)
         sms.is_read = TRUE;
         g_sms.stats.total_received++;
         have_message = TRUE;
-        wm_sdk_debug_print("SMS>rx6 inline parse OK sender='%s' body[%u]='%s'\r\n",
+        LOG_DEBUG("SMS>rx6 inline parse OK sender='%s' body[%u]='%s'",
                         sms.sender_number,
                         (unsigned)strlen(sms.message_content),
                         sms.message_content);
     } else {
-        wm_sdk_debug_print("SMS>rx6 no usable +CMGR text -> re-reading index %d\r\n", index);
+        LOG_DEBUG("SMS>rx6 no usable +CMGR text -> re-reading index %d", index);
         have_message = sms_read_message(index, &sms);
     }
 
     if (!have_message)
     {
-        wm_sdk_log_warning("SMS>rx7 no message for index %d - discarding", index);
+        LOG_WARN("SMS>rx7 no message for index %d - discarding", index);
         sms_manager_delete(index);
         return;
     }
@@ -715,7 +715,7 @@ static void sms_process_urc(const wm_SdkSmsMessage *msg)
         BOOL sender_ok  = sms_is_valid_sender(sms.sender_number);
         BOOL content_ok = sms_is_valid_content(sms.message_content);
 
-        wm_sdk_debug_print("SMS>rx7 validate sender=%s content=%s\r\n",
+        LOG_DEBUG("SMS>rx7 validate sender=%s content=%s",
                         sender_ok ? "OK" : "REJECT", content_ok ? "OK" : "REJECT");
 
         if (sender_ok && content_ok)
@@ -730,7 +730,8 @@ static void sms_process_urc(const wm_SdkSmsMessage *msg)
      * sms_read_message() fallback path above, which does not auto-delete. */
     {
         Result del = sms_manager_delete(index);
-        wm_sdk_debug_print("SMS>rx9 delete idx=%d rc=%d (rx done)\r\n", index, (int)del);
+        LOG_DEBUG("SMS>rx9 delete idx=%d rc=%d (rx done)", index, (int)del);
+        (void)del;
     }
 }
 
@@ -743,16 +744,16 @@ static BOOL sms_read_message(INT32 index, sms_message_t *out)
     BOOL success = FALSE;
 
     if (!out || g_temp_msg_queue == NULL || !g_sms.config) {
-        wm_sdk_log_error("SMS read: invalid parameters (out=%p, queue=%p, config=%p)",
+        LOG_ERROR("SMS read: invalid parameters (out=%p, queue=%p, config=%p)",
                   out, g_temp_msg_queue, g_sms.config);
         if (out) {
             g_sms.stats.receive_errors++;
-            wm_sdk_log_error("ERR_SMS_READ_FAILED"); /* ERRC */
+            LOG_ERROR("ERR_SMS_READ_FAILED"); /* ERRC */
         }
         return FALSE;
     }
 
-    wm_sdk_debug_print("Reading SMS at index %d\r\n", (int)index);
+    LOG_DEBUG("Reading SMS at index %d", (int)index);
     sms_flush_temp_queue();
 
     /* Read SMS by index (reference passed the literal storage id 1).
@@ -763,13 +764,13 @@ static BOOL sms_read_message(INT32 index, sms_message_t *out)
      * therefore documentation only; it changes nothing on this kernel. */
     wm_SdkResult read_result = wm_sdk_sms_read(WM_SDK_SMS_STORAGE_SM, (UINT32)index, g_temp_msg_queue);
     if (read_result != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("SMS read: wm_sdk_sms_read failed for index %d, result=%d", (int)index, (int)read_result);
+        LOG_ERROR("SMS read: wm_sdk_sms_read failed for index %d, result=%d", (int)index, (int)read_result);
         g_sms.stats.receive_errors++;
-        wm_sdk_log_error("ERR_SMS_READ_FAILED"); /* ERRC */
+        LOG_ERROR("ERR_SMS_READ_FAILED"); /* ERRC */
         return FALSE;
     }
 
-    wm_sdk_debug_print("SMS read: waiting for response (timeout=%u ms)\r\n", (unsigned)g_sms.config->urc_timeout_ms);
+    LOG_DEBUG("SMS read: waiting for response (timeout=%u ms)", (unsigned)g_sms.config->urc_timeout_ms);
 
     /* Walnut: this queue also carries asynchronous incoming messages, so a
      * stray WM_SDK_SMS_EVT_INCOMING can arrive before the read result. Park it and
@@ -790,16 +791,16 @@ static BOOL sms_read_message(INT32 index, sms_message_t *out)
     }
 
     if (recv_result != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("SMS read: msgq_recv failed for index %d, result=%d (timeout=%u ms)",
+        LOG_ERROR("SMS read: msgq_recv failed for index %d, result=%d (timeout=%u ms)",
                   (int)index, (int)recv_result, (unsigned)g_sms.config->urc_timeout_ms);
         g_sms.stats.receive_errors++;
-        wm_sdk_log_error("ERR_SMS_READ_FAILED"); /* ERRC */
+        LOG_ERROR("ERR_SMS_READ_FAILED"); /* ERRC */
         return FALSE;
     }
 
     /* reference: if (!rsp.arg3) */
     if (!rsp.text) {
-        wm_sdk_log_error("ERR_SMS_READ_FAILED: SMS read: response received but text is NULL (status=%d)",
+        LOG_ERROR("ERR_SMS_READ_FAILED: SMS read: response received but text is NULL (status=%d)",
                   (int)rsp.status);
         g_sms.stats.receive_errors++;
         return FALSE;
@@ -808,13 +809,13 @@ static BOOL sms_read_message(INT32 index, sms_message_t *out)
     const char *response_text = (const char *)rsp.text;
     /* Don't use strlen() on SDK-provided data - it might not be null-terminated */
     /* The SDK should provide null-terminated strings, but be safe */
-    wm_sdk_debug_print("SMS read: response received\r\n");
+    LOG_DEBUG("SMS read: response received");
 
     if (strstr(response_text, "+CMGR:") == NULL) {
-        wm_sdk_log_warning("SMS read: unexpected response type (expected +CMGR:), response: %s", response_text);
+        LOG_WARN("SMS read: unexpected response type (expected +CMGR:), response: %s", response_text);
         wm_sdk_sms_msg_free(&rsp);   /* reference: wm_sdk_memory_free(rsp.arg3) */
         sms_flush_temp_queue();
-        wm_sdk_log_error("ERR_SMS_READ_FAILED"); /* ERRC */
+        LOG_ERROR("ERR_SMS_READ_FAILED"); /* ERRC */
         g_sms.stats.receive_errors++;
         return FALSE;
     }
@@ -826,7 +827,7 @@ static BOOL sms_read_message(INT32 index, sms_message_t *out)
     g_sms.stats.total_received++;
     success = TRUE;
 
-    wm_sdk_debug_print("SMS read: success - sender=%s, content_len=%u\r\n",
+    LOG_DEBUG("SMS read: success - sender=%s, content_len=%u",
               out->sender_number, (unsigned)strlen(out->message_content));
 
     wm_sdk_sms_msg_free(&rsp);       /* reference: wm_sdk_memory_free(rsp.arg3) */
@@ -844,7 +845,7 @@ static void sms_extract_fields(const char *raw, char *sender, char *content)
     if (!raw)
     {
         utils_strncpy_safe(sender, "UNKNOWN", SMS_MANAGER_MAX_ADDRESS_LENGTH);
-        wm_sdk_log_error("ERR_SMS_UNKNOWN_NUMBER"); /* ERRC */
+        LOG_ERROR("ERR_SMS_UNKNOWN_NUMBER"); /* ERRC */
         return;
     }
 
@@ -885,14 +886,14 @@ static void sms_extract_fields(const char *raw, char *sender, char *content)
         }
     }
 
-    const char *body = strstr(raw, "\r\n");
+    const char *body = strstr(raw, "");
     if (body)
     {
         body += 2;
         /* Use safe length calculation - find end of body or max length */
         /* Don't use strlen() as SMS data might not be null-terminated */
         size_t len = 0;
-        const char *body_end = strstr(body, "\r\n");
+        const char *body_end = strstr(body, "");
         if (body_end)
         {
             len = body_end - body;
@@ -968,7 +969,7 @@ static void sms_configure(void)
     }
 
     if (g_temp_msg_queue == NULL || !g_sms.config) {
-        wm_sdk_log_warning("SMS configure: temp queue or config not available");
+        LOG_WARN("SMS configure: temp queue or config not available");
         return;
     }
 
@@ -987,7 +988,7 @@ static void sms_configure(void)
 
     s_sms_config_attempts++;
     s_sms_config_last_attempt_ms = utils_monotonic_ms_now();
-    wm_sdk_debug_print("Configuring SMS settings (attempt %u)\r\n", (unsigned)s_sms_config_attempts);
+    LOG_DEBUG("Configuring SMS settings (attempt %u)", (unsigned)s_sms_config_attempts);
 
     wm_SdkResult ret = -1;
     BOOL essential_ok = TRUE;   /* walnut addition: drives the retry latch below */
@@ -1001,7 +1002,7 @@ static void sms_configure(void)
      * this check can never fire - kept for API correctness. */
     ret = wm_sdk_sms_init();
     if (ret != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: wm_sdk_sms_init failed: %d", (int)ret); /* ERRC */
+        LOG_ERROR("ERR_SMS_CONFIG_FAILED: wm_sdk_sms_init failed: %d", (int)ret); /* ERRC */
         return;   /* retry on the next task cycle */
     }
 
@@ -1023,7 +1024,7 @@ static void sms_configure(void)
        * which AT+CPMS? does not report), but demoted to non-essential. */
         int cpms = wm_sms_set_preferred_storage("SM", "SM", "SM");
         if (cpms == 0) {
-            wm_sdk_debug_print("SMS preferred storage set to SM/SM/SM\r\n");
+            LOG_DEBUG("SMS preferred storage set to SM/SM/SM");
             sms_log_store_status("after CPMS");
         } else {
             /* NOT essential - deliberately does not clear essential_ok. The
@@ -1031,7 +1032,7 @@ static void sms_configure(void)
              * defaults to `storage SM: 0/10 used`, so the pin is belt-and-
              * braces; some modems also reject the three-argument CPMS form.
              * Failing it must not trigger the retry ladder. */
-            wm_sdk_log_warning("SMS preferred storage set failed: %d (keeping modem default)",
+            LOG_WARN("SMS preferred storage set failed: %d (keeping modem default)",
                             cpms);
         }
     }
@@ -1039,7 +1040,7 @@ static void sms_configure(void)
     { /* delete previous SMS in SIM */
         ret = wm_sdk_sms_delete_all(g_temp_msg_queue);
         if (ret == WM_SDK_RESULT_SUCCESS) {
-            wm_sdk_debug_print("SMS: deleted all messages\r\n");
+            LOG_DEBUG("SMS: deleted all messages");
         } else if (ret != WM_SDK_RESULT_NOT_SUPPORTED) {
             /* wm_sdk_sms_delete_all() issues "AT+CMGD=0,4" (wm_sms_delete_message
              * with index 0, delflag 4). On-target 2026-09-08 this answers ERROR
@@ -1049,21 +1050,21 @@ static void sms_configure(void)
              * window. So the retry in sms_configure() is what actually fixes
              * this; the per-index sweep below is a fallback for a modem/SIM
              * that rejects AT+CMGD=0,4 permanently. */
-            wm_sdk_debug_print("SMS: delete all returned %d, sweeping per-index\r\n", (int)ret);
+            LOG_DEBUG("SMS: delete all returned %d, sweeping per-index", (int)ret);
             if (!sms_purge_store()) {
                 essential_ok = FALSE;
             }
-        } else wm_sdk_log_error("ERR_SMS_DELETE_FAILED: delete all not supported"); /* ERRC */
+        } else LOG_ERROR("ERR_SMS_DELETE_FAILED: delete all not supported"); /* ERRC */
     }
 
     { /* set SMS character format*/
         ret = wm_sdk_sms_set_format((UINT8)g_sms.config->format_mode); // text mode
         if (ret == WM_SDK_RESULT_SUCCESS) {
-            wm_sdk_debug_print("SMS format set to %u\r\n", (unsigned)g_sms.config->format_mode);
+            LOG_DEBUG("SMS format set to %u", (unsigned)g_sms.config->format_mode);
         } else if (ret != WM_SDK_RESULT_NOT_SUPPORTED) {
-            wm_sdk_log_warning("SMS format set failed: %d", (int)ret);
+            LOG_WARN("SMS format set failed: %d", (int)ret);
             essential_ok = FALSE;
-        } else wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: set format not supported"); /* ERRC */
+        } else LOG_ERROR("ERR_SMS_CONFIG_FAILED: set format not supported"); /* ERRC */
     }
 
     { /* set SMS new message indication policy */
@@ -1080,39 +1081,39 @@ static void sms_configure(void)
          * +CMTI), bm/ds/bfr = 0. */
         ret = wm_sdk_sms_set_new_msg_ind(2, 1, 0, 0, 0);
         if (ret == WM_SDK_RESULT_SUCCESS) {
-            wm_sdk_debug_print("SMS new message indication configured (+CMTI)\r\n");
+            LOG_DEBUG("SMS new message indication configured (+CMTI)");
         } else if (ret != WM_SDK_RESULT_NOT_SUPPORTED) {
-            wm_sdk_log_warning("SMS new message indication setup failed: %d", (int)ret);
+            LOG_WARN("SMS new message indication setup failed: %d", (int)ret);
             essential_ok = FALSE;   /* without +CMTI no SMS is ever received */
-        } else wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: set new msg ind not supported"); /* ERRC */
+        } else LOG_ERROR("ERR_SMS_CONFIG_FAILED: set new msg ind not supported"); /* ERRC */
     }
 
     { /* set SMS character set protocol: standard 7-bit GSM */
         ret = wm_sdk_sms_set_charset(0);
         if (ret == WM_SDK_RESULT_SUCCESS) {
-            wm_sdk_debug_print("SMS charset set to GSM 7-bit\r\n");
+            LOG_DEBUG("SMS charset set to GSM 7-bit");
         } else if (ret != WM_SDK_RESULT_NOT_SUPPORTED) {
-            wm_sdk_log_warning("SMS charset set failed: %d", (int)ret);
+            LOG_WARN("SMS charset set failed: %d", (int)ret);
             essential_ok = FALSE;
-        } else wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: set charset not supported"); /* ERRC */
+        } else LOG_ERROR("ERR_SMS_CONFIG_FAILED: set charset not supported"); /* ERRC */
     }
 
     /* Reference latched unconditionally here. Walnut retries a bounded number
      * of times so the storage-dependent commands get another chance once the
      * SIM's SMS store has finished loading. */
     if (!essential_ok && s_sms_config_attempts < SMS_CONFIG_MAX_ATTEMPTS) {
-        wm_sdk_log_warning("SMS modem config incomplete, retrying (%u/%u)",
+        LOG_WARN("SMS modem config incomplete, retrying (%u/%u)",
                         (unsigned)s_sms_config_attempts, (unsigned)SMS_CONFIG_MAX_ATTEMPTS);
         return;
     }
 
     if (essential_ok) {
-        wm_sdk_log_info("SMS modem configured");
+        LOG_INFO("SMS modem configured");
         /* Baseline for the inbound test: `used` should be 0 here, and should
          * climb the moment an SMS is delivered to the device. */
         sms_log_store_status("configured");
     } else {
-        wm_sdk_log_error("ERR_SMS_CONFIG_FAILED: giving up after %u attempts - "
+        LOG_ERROR("ERR_SMS_CONFIG_FAILED: giving up after %u attempts - "
                       "inbound SMS may not work", (unsigned)s_sms_config_attempts); /* ERRC */
     }
 
@@ -1161,7 +1162,7 @@ Result sms_manager_deinit(void)
     g_sms.module = NULL;
     g_sms.config = NULL;
     memset(&g_sms.stats, 0, sizeof(g_sms.stats));
-    wm_sdk_log_info("SMS manager stopped");
+    LOG_INFO("SMS manager stopped");
     return RESULT_SUCCESS;
 }
 
@@ -1183,7 +1184,7 @@ Result sms_manager_init(void)
         g_temp_msg_queue = wm_sdk_msgq_create("sms_tempq", sizeof(wm_SdkSmsMessage),
                                            SMS_MANAGER_QUEUE_SIZE, 0);
         if (g_temp_msg_queue == NULL) {
-            wm_sdk_log_error("SMS temp queue create failed");
+            LOG_ERROR("SMS temp queue create failed");
             queue_manager_destroy(g_sms.module->config.msg_q, &g_sms.module->config.msg_q_config);
             g_sms.module->config.msg_q = NULL;
             return RESULT_ERROR;
@@ -1194,7 +1195,7 @@ Result sms_manager_init(void)
         g_sms.module->config.urc_q_config.element_size > 0U) {
         if (queue_manager_create(&g_sms.module->config.urc_q_config,
                                  &g_sms.module->config.urc_q) != RESULT_SUCCESS) {
-            wm_sdk_log_error("SMS URC queue create failed");
+            LOG_ERROR("SMS URC queue create failed");
             queue_manager_destroy(g_sms.module->config.msg_q, &g_sms.module->config.msg_q_config);
             g_sms.module->config.msg_q = NULL;
             return RESULT_ERROR;
@@ -1223,6 +1224,6 @@ Result sms_manager_init(void)
     }
 
     event_manager_broadcast(EVENT_SMS_CONNECTED, "SMS Manager", NULL, 0);
-    wm_sdk_log_info("SMS manager ready");
+    LOG_INFO("SMS manager ready");
     return RESULT_SUCCESS;
 }

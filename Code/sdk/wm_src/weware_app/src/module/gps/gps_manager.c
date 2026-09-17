@@ -41,6 +41,10 @@
 
 #include <stdio.h>
 
+#define LOG_TAG "GPS"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /*---------------------------------------------------------------
  * Runtime State
  *--------------------------------------------------------------*/
@@ -83,7 +87,7 @@ static void gps_set_ignition_status(BOOL ign_status)
         return;
     g_gps.ign_status = ign_status;
     gps_latch_send_trigger(ign_status ? GPS_TRIGGER_IGN_ON : GPS_TRIGGER_IGN_OFF);
-    wm_sdk_log_info("GPS ignition latch %s", ign_status ? "ON" : "OFF");
+    LOG_INFO("GPS ignition latch %s", ign_status ? "ON" : "OFF");
 }
 
 static void gps_set_motion_status(BOOL mot_status)
@@ -94,7 +98,7 @@ static void gps_set_motion_status(BOOL mot_status)
     gps_ops_loc_storage_update_on_motion_changed(mot_status);
     /* Reference keeps the motion trigger latch disabled too:
      * gps_latch_send_trigger(mot_status ? GPS_TRIGGER_MOTION_ON : GPS_TRIGGER_MOTION_OFF); */
-    wm_sdk_log_info("GPS motion latch %s", mot_status ? "ON" : "OFF");
+    LOG_INFO("GPS motion latch %s", mot_status ? "ON" : "OFF");
 }
 
 static void gps_set_charge_status(BOOL charge_connected)
@@ -153,7 +157,7 @@ static void gps_nmea_push_combined_pair(void)
     n = snprintf(gps_el.combined, sizeof(gps_el.combined), "%s\n%s",
                  s_nmea_slot_rmc, s_nmea_slot_gga);
     if (n < 0 || (size_t)n >= sizeof(gps_el.combined)) {
-        wm_sdk_log_warning("GPS NMEA combined truncated or snprintf error");
+        LOG_WARN("GPS NMEA combined truncated or snprintf error");
         s_nmea_slot_rmc[0] = '\0';
         s_nmea_slot_gga[0] = '\0';
         return;
@@ -162,7 +166,7 @@ static void gps_nmea_push_combined_pair(void)
     /* Full queue just means the GPS task is behind by >4 s; the pair is
      * droppable (a fresh one arrives next epoch) - debug, not error. */
     if (queue_push(mod->config.urc_q, &mod->config.urc_q_config, &gps_el) != RESULT_SUCCESS)
-        wm_sdk_debug_print("GPS NMEA queue_push failed (full)\r\n");
+        LOG_DEBUG("GPS NMEA queue_push failed (full)");
 
     s_nmea_slot_rmc[0] = '\0';
     s_nmea_slot_gga[0] = '\0';
@@ -198,7 +202,7 @@ BOOL gps_manager_nmea_feed_register(void)
 {
     wm_SdkResult r = wm_sdk_gps_set_nmea_callback(gps_nmea_sentence_cb);
     if (r != WM_SDK_RESULT_SUCCESS) {
-        wm_sdk_log_warning("GPS NMEA callback register failed (%d) - no position source until retry", (int)r);
+        LOG_WARN("GPS NMEA callback register failed (%d) - no position source until retry", (int)r);
         return FALSE;
     }
     return TRUE;
@@ -225,7 +229,7 @@ static void gps_task_entry(void *argv)
     char msg_buf[MODULE_MESSAGE_INLINE_SIZE];
 
     (void)argv;
-    wm_sdk_log_info("GPS task started");
+    LOG_INFO("GPS task started");
 
     while (g_gps_running) {
         wm_sdk_task_sleep(GPS_TASK_LOOP_SLEEP_MS);
@@ -289,7 +293,7 @@ wm_SdkResult gps_manager_deinit(void)
     }
 
     gps_ops_set_runtime_defaults();
-    wm_sdk_log_info("GPS manager stopped");
+    LOG_INFO("GPS manager stopped");
     return WM_SDK_RESULT_SUCCESS;
 }
 
@@ -370,7 +374,7 @@ wm_SdkResult gps_manager_init(void)
         gps_module->config.urc_q_config.element_size > 0U) {
         if (queue_manager_create(&gps_module->config.urc_q_config,
                                  &gps_module->config.urc_q) != RESULT_SUCCESS) {
-            wm_sdk_log_error("GPS URC queue create failed - navdata fallback only");
+            LOG_ERROR("GPS URC queue create failed - navdata fallback only");
             gps_module->config.urc_q = NULL;
         }
     }
@@ -384,10 +388,10 @@ wm_SdkResult gps_manager_init(void)
                                      TP_TIMED_ACTIVITY);
     if (!g_gps.task_ref) {
         g_gps_running = FALSE;
-        wm_sdk_log_error("GPS task create failed");
+        LOG_ERROR("GPS task create failed");
         return WM_SDK_RESULT_ERROR;
     }
 
-    wm_sdk_log_info("GPS manager ready");
+    LOG_INFO("GPS manager ready");
     return WM_SDK_RESULT_SUCCESS;
 }

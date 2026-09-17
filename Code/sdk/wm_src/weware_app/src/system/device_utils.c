@@ -19,6 +19,10 @@
 
 #include <string.h>
 
+#define LOG_TAG "DEV_UTIL"
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#include "module/log/log.h"
+
 /*---------------------------------------------------------------
  * Configuration
  *--------------------------------------------------------------*/
@@ -70,11 +74,11 @@ static void imei_store(const char *imei)
 wm_SdkResult device_utils_init(void)
 {
     if (g_imei_initialized) {
-        wm_sdk_log_warning("Device utils already initialized: %s\r\n", g_global_imei);
+        LOG_WARN("Device utils already initialized: %s", g_global_imei);
         return WM_SDK_RESULT_SUCCESS;
     }
 
-    wm_sdk_log_info("Initializing device utilities (IMEI)...\r\n");
+    LOG_INFO("Initializing device utilities (IMEI)...");
     wm_sdk_task_sleep(IMEI_RETRY_DELAY_MS);
 
     char imei_string[DEVICE_UTILS_IMEI_BUFFER_SIZE] = {0};
@@ -83,7 +87,7 @@ wm_SdkResult device_utils_init(void)
         wm_SdkResult result = wm_sdk_device_get_imei(imei_string, sizeof(imei_string));
 
         if (result == WM_SDK_RESULT_NOT_SUPPORTED) {
-            wm_sdk_log_error("IMEI retrieval not supported\r\n");
+            LOG_ERROR("IMEI retrieval not supported");
             imei_reset();
             return WM_SDK_RESULT_NOT_SUPPORTED;
         }
@@ -92,12 +96,12 @@ wm_SdkResult device_utils_init(void)
             strlen(imei_string) >= DEVICE_UTILS_IMEI_LENGTH) {
             // imei_store(imei_string);
             imei_store("860056081830565");
-            wm_sdk_log_info("IMEI initialized: %s (attempt %u)\r\n",
+            LOG_INFO("IMEI initialized: %s (attempt %u)",
                          g_global_imei, (unsigned)(attempt + 1));
             return WM_SDK_RESULT_SUCCESS;
         }
 
-        wm_sdk_log_warning("IMEI attempt %u failed (result=%d, len=%u, value='%s')\r\n",
+        LOG_WARN("IMEI attempt %u failed (result=%d, len=%u, value='%s')",
                         (unsigned)(attempt + 1), (int)result,
                         (unsigned)strlen(imei_string), imei_string);
 
@@ -107,7 +111,7 @@ wm_SdkResult device_utils_init(void)
         }
     }
 
-    wm_sdk_log_error("Failed to initialize IMEI after %u attempts\r\n",
+    LOG_ERROR("Failed to initialize IMEI after %u attempts",
                   (unsigned)IMEI_MAX_RETRIES);
     return WM_SDK_RESULT_ERROR;
 }
@@ -126,12 +130,12 @@ wm_SdkResult device_utils_set_imei(const char *imei)
 {
     if (!imei || strlen(imei) < DEVICE_UTILS_IMEI_LENGTH ||
         strlen(imei) >= DEVICE_UTILS_IMEI_BUFFER_SIZE) {
-        wm_sdk_log_error("Invalid IMEI string provided\r\n");
+        LOG_ERROR("Invalid IMEI string provided");
         return WM_SDK_RESULT_INVALID_PARAM;
     }
 
     imei_store(imei);
-    wm_sdk_log_info("IMEI manually set to: %s\r\n", g_global_imei);
+    LOG_INFO("IMEI manually set to: %s", g_global_imei);
     return WM_SDK_RESULT_SUCCESS;
 }
 
@@ -142,14 +146,14 @@ int device_utils_is_imei_initialized(void)
 
 wm_SdkResult device_utils_refresh_imei(void)
 {
-    wm_sdk_log_info("Refreshing IMEI...\r\n");
+    LOG_INFO("Refreshing IMEI...");
     imei_reset();
     return device_utils_init();
 }
 
 wm_SdkResult device_utils_deinit(void)
 {
-    wm_sdk_log_info("Deinitializing device utilities\r\n");
+    LOG_INFO("Deinitializing device utilities");
     imei_reset();
     memset(g_st_firmware_version, 0, sizeof(g_st_firmware_version));
     g_st_fw_version_initialized = false;
@@ -171,7 +175,7 @@ wm_SdkResult device_utils_set_st_firmware_version(const char *version)
     size_t len = version ? strlen(version) : 0;
 
     if (len == 0 || len >= DEVICE_UTILS_ST_FW_VERSION_BUFFER_SIZE) {
-        wm_sdk_log_error("Invalid ST firmware version string (len=%u)\r\n",
+        LOG_ERROR("Invalid ST firmware version string (len=%u)",
                       (unsigned)len);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
@@ -179,7 +183,7 @@ wm_SdkResult device_utils_set_st_firmware_version(const char *version)
     du_strncpy_safe(g_st_firmware_version, version,
                     sizeof(g_st_firmware_version));
     g_st_fw_version_initialized = true;
-    wm_sdk_log_info("ST firmware version set to: %s\r\n", g_st_firmware_version);
+    LOG_INFO("ST firmware version set to: %s", g_st_firmware_version);
     return WM_SDK_RESULT_SUCCESS;
 }
 
@@ -195,7 +199,7 @@ void device_utils_invalidate_st_firmware_version(void)
      * and the stale cache would otherwise trigger a repeat OTA. */
     g_st_fw_version_initialized = false;
     g_st_firmware_version[0] = '\0';
-    wm_sdk_log_info("ST firmware version invalidated (will be re-queried)\r\n");
+    LOG_INFO("ST firmware version invalidated (will be re-queried)");
 }
 
 /*---------------------------------------------------------------
@@ -210,7 +214,7 @@ void device_utils_peri_reset_all(void)
         g_peri_devices = (PeriDeviceInfo *)wm_sdk_memory_alloc(
             PERI_DEVICE_MAX * sizeof(PeriDeviceInfo));
         if (!g_peri_devices) {
-            wm_sdk_log_error("peri_reset_all: alloc failed\r\n");
+            LOG_ERROR("peri_reset_all: alloc failed");
             return;
         }
     }
@@ -231,7 +235,7 @@ wm_SdkResult device_utils_peri_set_ready(UINT8 device_id)
 {
     PeriDeviceInfo *slot = peri_slot(device_id);
     if (!slot) {
-        wm_sdk_log_error("peri_set_ready: invalid device_id %u\r\n",
+        LOG_ERROR("peri_set_ready: invalid device_id %u",
                       (unsigned)device_id);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
@@ -245,14 +249,14 @@ wm_SdkResult device_utils_peri_set_version(UINT8 device_id, UINT16 fw_version,
 {
     PeriDeviceInfo *slot = peri_slot(device_id);
     if (!slot) {
-        wm_sdk_log_error("peri_set_version: invalid device_id %u\r\n",
+        LOG_ERROR("peri_set_version: invalid device_id %u",
                       (unsigned)device_id);
         return WM_SDK_RESULT_INVALID_PARAM;
     }
     slot->fw_version    = fw_version;
     slot->hw_version    = hw_version;
     slot->version_valid = true;
-    wm_sdk_log_info("Peri[%u] version set: fw=%u hw=%u\r\n",
+    LOG_INFO("Peri[%u] version set: fw=%u hw=%u",
                  (unsigned)device_id, (unsigned)fw_version,
                  (unsigned)hw_version);
     return WM_SDK_RESULT_SUCCESS;
