@@ -148,4 +148,79 @@ TOPIC-2: FLASH
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+WALNUT SDK BUILD / FLASH COMMANDS
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+BUILD.BAT
+---------
+-t <target>   Target to build. Default: value from out\bcfg, else hello
+-c            Clean build (deletes out\)
+-d            Build + flash (calls download.bat -app)
+-fs <size>    Flash size in MB (GW1NS: 4 or 2)
+-bv <version> Module version: GW1NS
+-h            Help
+
+Valid targets:
+weware_main   Customer app: wm_src\weware_app\weware_main.c
+wm_app_main   Vendor demo: Code\sdk\wm_app_main.c
+hello         Special case; uses CMakeLists.txt.in unmodified
+
+DOWNLOAD.BAT
+------------
+-ALL          Full package / flash (target: all)
+-app          App partition only (target: app, default)
+-all          Everything except rf.bin (target: norf)
+-wf           No RF + no filesystem erase (target: nofs_norf)
+-rf           RF calibration only (target: rf)
+-r            Package only, no flashing; creates _all.zip + _map.zip
+              (_map.zip is debug symbols only - NOT flashable;
+               -r does not produce _app.zip or other target zips)
+-p <zip>      Flash existing ZIP, skip repackaging
+-b <dir>      Override binary source directory
+-t <dir>      Override aboot tool directory
+
+IMPORTANT:
+-ALL = FULL FLASH
+-all = EVERYTHING EXCEPT RF
+Case-sensitive; do not mix them up.
+
+WRAPPERS
+--------
+wm_b8.bat     build.bat -bv GW1NS -fs 4 -t weware_main
+wm_c8.bat     build.bat -c
+wm_f8.bat     download.bat -ALL
+Burn_ALL.bat  download.bat -ALL
+Burn_APP.bat  download.bat -app
+
+wm_f8.bat and Burn_ALL.bat are identical.
+
+TYPICAL LOOP
+------------
+wm_b8.bat
+Burn_APP.bat
+
+FULL REFLASH
+------------
+Burn_ALL.bat
+
+FLASH EXISTING PACKAGE
+----------------------
+download.bat -p 800VGFFRO60G0496_all.zip (located in Tools/aboot)
+
+IMPORTANT: out\bcfg
+-------------------
+build.bat without -t reuses the target stored in out\bcfg.
+If it contains wm_app_main, you will build the vendor demo instead
+of weware_main.
+
+Always use:
+build.bat -bv GW1NS -fs 4 -t weware_main
+
+or:
+wm_b8.bat
+
+-fs also persists in out\bcfg, which is why wm_b8.bat passes -fs 4
+explicitly.
+
 Thats pretty much it.
