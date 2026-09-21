@@ -59,35 +59,35 @@ void log_printf(const char *fmt, ...);
  *---------------------------------------------------------------*/
 #if LOG_EFFECTIVE_LEVEL >= LOG_LEVEL_ERROR
 #define LOG_ERROR(fmt, ...) \
-    log_printf("[%s] E: " fmt "\r\n", LOG_TAG, ##__VA_ARGS__)
+    log_printf("[%s] E: " fmt "", LOG_TAG, ##__VA_ARGS__)
 #else
 #define LOG_ERROR(...) ((void)0)
 #endif
 
 #if LOG_EFFECTIVE_LEVEL >= LOG_LEVEL_WARN
 #define LOG_WARN(fmt, ...) \
-    log_printf("[%s] W: " fmt "\r\n", LOG_TAG, ##__VA_ARGS__)
+    log_printf("[%s] W: " fmt "", LOG_TAG, ##__VA_ARGS__)
 #else
 #define LOG_WARN(...) ((void)0)
 #endif
 
 #if LOG_EFFECTIVE_LEVEL >= LOG_LEVEL_INFO
 #define LOG_INFO(fmt, ...) \
-    log_printf("[%s] I: " fmt "\r\n", LOG_TAG, ##__VA_ARGS__)
+    log_printf("[%s] I: " fmt "", LOG_TAG, ##__VA_ARGS__)
 #else
 #define LOG_INFO(...) ((void)0)
 #endif
 
 #if LOG_EFFECTIVE_LEVEL >= LOG_LEVEL_DEBUG
 #define LOG_DEBUG(fmt, ...) \
-    log_printf("[%s] D: " fmt "\r\n", LOG_TAG, ##__VA_ARGS__)
+    log_printf("[%s] D: " fmt "", LOG_TAG, ##__VA_ARGS__)
 #else
 #define LOG_DEBUG(...) ((void)0)
 #endif
 
 #if LOG_EFFECTIVE_LEVEL >= LOG_LEVEL_TRACE
 #define LOG_TRACE(fmt, ...) \
-    log_printf("[%s] T: " fmt "\r\n", LOG_TAG, ##__VA_ARGS__)
+    log_printf("[%s] T: " fmt "", LOG_TAG, ##__VA_ARGS__)
 #else
 #define LOG_TRACE(...) ((void)0)
 #endif
