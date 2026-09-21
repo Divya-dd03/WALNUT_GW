@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define LOG_TAG          "POSTBOOT"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 static ResetHandlerLastSwResetInfo s_prior;

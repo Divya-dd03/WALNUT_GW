@@ -47,7 +47,7 @@
 #include "module/command/command_manager.h"
 
 #define LOG_TAG "TCP"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 /*===============================================================

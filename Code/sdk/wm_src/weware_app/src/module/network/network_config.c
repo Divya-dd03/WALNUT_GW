@@ -21,7 +21,7 @@
 #include "config/config.h"
 
 #define LOG_TAG "NET_CFG"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 static const ConfigKeyMap s_net_cfg_keys[] = {

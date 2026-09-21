@@ -22,7 +22,7 @@
 #include <strings.h>
 
 #define LOG_TAG "SYS_CFG"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 SystemConfig g_system_config;

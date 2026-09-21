@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define LOG_TAG          "PREBOOT"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 #define PRE_BOOT_MAGIC    0x46494250u  /* 'PBIF' */

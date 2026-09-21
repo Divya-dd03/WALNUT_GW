@@ -7,7 +7,7 @@
 #include "wm_sdk_adc.h"
 
 #define LOG_TAG          "ADC"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 static BOOL s_ready = FALSE;

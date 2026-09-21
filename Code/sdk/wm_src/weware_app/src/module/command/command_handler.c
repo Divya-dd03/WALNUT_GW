@@ -54,7 +54,7 @@
  *--------------------------------------------------------------*/
 #define LOG_TAG "CMD_HANDLER"
 /** INFO for command audit (e.g. DELETE-FOLDER, reboot); tune down via LOG_GLOBAL_LEVEL if needed */
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 /* ============================================================================

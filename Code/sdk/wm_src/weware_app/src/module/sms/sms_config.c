@@ -21,7 +21,7 @@
  * Log Configuration
  *--------------------------------------------------------------*/
 #define LOG_TAG "SMS_CFG"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 void sms_config_get_defaults(void *config)

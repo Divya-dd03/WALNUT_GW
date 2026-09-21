@@ -25,7 +25,7 @@
 #include "common/task_stats.h"
 
 #define LOG_TAG "SIM"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 /*---------------------------------------------------------------
@@ -262,6 +262,10 @@ wm_SdkResult weware_sim_query_modem_status(wm_SdkSimStatus *status)
     if (result == WM_SDK_RESULT_SUCCESS) {
         s_status_err_logged = false;
         LOG_INFO("SIM modem status=%d", (int)*status);
+        UINT8 out = -1;
+        if (wm_sdk_sim_get_pin_status(&out) == WM_SDK_RESULT_SUCCESS)
+            LOG_INFO("wm_sdk_sim_get_pin_status: %d", out);
+        else LOG_ERROR("wm_sdk_sim_get_pin_status: %d", out);
         return WM_SDK_RESULT_SUCCESS;
     }
 

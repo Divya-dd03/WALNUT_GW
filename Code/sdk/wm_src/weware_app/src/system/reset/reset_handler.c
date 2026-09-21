@@ -14,7 +14,7 @@
 #include <string.h>
 
 #define LOG_TAG          "RESET"
-#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
+#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
 #include "module/log/log.h"
 
 #define RESET_DEFER_DELAY_MS       200U
