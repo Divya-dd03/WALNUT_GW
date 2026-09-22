@@ -34,11 +34,8 @@ extern "C"
 /* Start or stop scanning for the fuel probes. Powers BLE up on first use. */
 void wm_ui_ble_scan_demo(void);
 
-/* Print the latest fuel readings and run one Autoguard health exchange. */
-void wm_ui_ble_read_demo(void);
-
-/* Start or stop the background task that repeats the read on a fixed period.
- * Returns immediately. */
+/* Start or stop the background task that prints the latest fuel readings and
+ * runs an Autoguard health exchange on a fixed period. Returns immediately. */
 void wm_ui_ble_monitor_demo(void);
 
 /* Stop the monitor, drop any link and power BLE down. */

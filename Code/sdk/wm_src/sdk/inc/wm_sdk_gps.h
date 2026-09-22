@@ -35,7 +35,7 @@ extern "C"
 #define WM_SDK_GPS_CHIP_BK1616P  1
 #define WM_SDK_GPS_CHIP_CC1161W  2
 
-#define WM_SDK_GPS_CURRENT_CHIP  WM_SDK_GPS_CHIP_BK1616P
+#define WM_SDK_GPS_CURRENT_CHIP  WM_SDK_GPS_CHIP_CC1161W
 
 /*******************************************************************************
 ** Constellation bits for wm_sdk_gps_set_mode(). OR together the systems wanted;
@@ -64,7 +64,7 @@ extern "C"
 #define WM_SDK_GPS_SYS_QZSS    (1uL << 16)  /* QZSS                        */
 #define WM_SDK_GPS_SYS_SBAS    (1uL << 17)  /* SBAS                        */
 
-/* Every constellation bit the receiver accepts. */
+/* Every constellation bit the receiver accepts - it is single-band L1. */
 #define WM_SDK_GPS_SYS_ALL   (WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_BDS  | \
                            WM_SDK_GPS_SYS_BDS_B1C | WM_SDK_GPS_SYS_GLO | \
                            WM_SDK_GPS_SYS_GAL | WM_SDK_GPS_SYS_QZSS | \
@@ -149,12 +149,28 @@ wm_SdkResult wm_sdk_gps_set_power_status(UINT8 power_on);
 
 /**
  * @brief  Set the GNSS constellation mode (e.g. GPS, GPS+GLONASS).
- * @param  mode  bitmask, OR of WM_SDK_GPS_SYS_* (at least one bit).
+ * @param  mode  bitmask, OR of WM_SDK_GPS_SYS_* (at least one bit). A value from
+ *               wm_sdk_gps_get_mode() can be written back unchanged.
  * @return wm_SdkResult - 0 success; WM_SDK_RESULT_INVALID_PARAM if @p mode is 0 or
  *                     carries a bit outside WM_SDK_GPS_SYS_ALL;
  *                     WM_SDK_RESULT_NOT_INITIALIZED before wm_sdk_gps_init().
  */
 wm_SdkResult wm_sdk_gps_set_mode(UINT32 mode);
+
+/**
+ * @brief  Read the GNSS constellation mode back from the receiver. Queries the
+ *         receiver rather than reporting what was last set, so it stays correct
+ *         across a reboot - the receiver keeps this setting in its own flash.
+ *         Needs the receiver powered on.
+ * @param  mode  [out] bitmask of WM_SDK_GPS_SYS_* bits, exactly as reported. The
+ *               receiver supports signals beyond WM_SDK_GPS_SYS_ALL, so a bit
+ *               outside it is possible and is not filtered out.
+ * @return wm_SdkResult - 0 success; WM_SDK_RESULT_INVALID_PARAM on a NULL pointer;
+ *                     WM_SDK_RESULT_TIMEOUT if the receiver does not answer (it
+ *                     cannot while powered off); WM_SDK_RESULT_NOT_INITIALIZED
+ *                     before wm_sdk_gps_init().
+ */
+wm_SdkResult wm_sdk_gps_get_mode(UINT32 *mode);
 
 /**
  * @brief  Set the NMEA sentence output rate.
@@ -200,9 +216,10 @@ wm_SdkResult wm_sdk_gps_enable_nmea_output(UINT32 data_get_mode);
 wm_SdkResult wm_sdk_gps_set_gnss_info_period(UINT32 period_sec);
 
 /**
- * @brief  Open the A-GPS assistance service to speed up first fix.
- * @return wm_SdkResult - always WM_SDK_RESULT_NOT_SUPPORTED: the on-board receiver
- *                     has no assistance-server path on this hardware.
+ * @brief  Queue an A-GNSS fetch + inject to speed up the next fix. Non-blocking;
+ *         runs on the assistance task. Skips the re-fetch interval but not the
+ *         daily request cap. Deferred while the receiver is powered off.
+ * @return wm_SdkResult - 0 on success, negative on failure.
  */
 wm_SdkResult wm_sdk_gps_open_agps_service(void);
 

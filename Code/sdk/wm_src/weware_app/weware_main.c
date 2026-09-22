@@ -24,6 +24,7 @@
 #include "wm_sdk_wm.h"
 #include "wm_sdk_log.h"
 #include "wm_sdk_os.h"
+// #include "wm_keys.h"            /* wm_ev_acc_state() callback contract */
 /* Common infra (ports of the reference firmware's system layer) */
 #include "common/utils.h"
 #include "common/event_manager.h"
@@ -124,6 +125,28 @@ static void weware_main_task(void *arg)
         wm_sdk_task_sleep(1000);
     }
 }
+
+/**
+ * @brief  SDK ACC (ignition sense) edge callback - link-time contract.
+ *
+ *         wm_key_init() (lib_wmsrc.a, wm_keys.c) spawns an acc_poll task
+ *         whenever the board table sets ACC_SUPPORT, and that task calls
+ *         wm_ev_acc_state() on every debounced ACC_DET edge. Unlike the
+ *         wm_ev_key_N_state() siblings, the SDK ships no default definition
+ *         for it (lib_wmsrc_B.a/wm_sdk_wm.c defines only the key ones), so
+ *         the customer app must provide it or the image will not link. The
+ *         vendor demo satisfies this from wm_ui_app.c, which this project
+ *         excludes (wm_src/CMakeLists.txt).
+ *
+ *         Log only: weware derives ignition from the ADC input-wire voltage
+ *         with its own debounce in vehicle_state.c, which is the single
+ *         source of truth for EVENT_IGN_ON/OFF. Do not broadcast ignition
+ *         events from here without reconciling the two sources.
+ */
+// void wm_ev_acc_state(BOOL ignition_on)
+// {
+//     RTI_LOG("SDK ACC line: ignition %s", ignition_on ? "ON" : "OFF");
+// }
 
 int appimg_enter(void *param)
 {

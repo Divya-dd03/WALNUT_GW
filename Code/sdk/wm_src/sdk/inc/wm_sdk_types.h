@@ -445,6 +445,22 @@ typedef struct
 typedef void (*wm_SdkUartRxCallback)(UINT32 port, const UINT8 *data, UINT32 len, void *arg);
 
 /*******************************************************************************
+** FILE types
+******************************************************************************/
+/* Longest entry name wm_sdk_file_list_dir() reports, including the NUL. The
+ * file system allows more; a longer name is truncated rather than dropped, so
+ * that a listing stays small enough to sit on a task stack. */
+#define WM_SDK_FILE_NAME_MAX  (64u)
+
+/* One entry from wm_sdk_file_list_dir(). */
+typedef struct
+{
+    char   name[WM_SDK_FILE_NAME_MAX];  /* entry name only, no path       */
+    UINT32 size;                        /* bytes; 0 for a directory       */
+    BOOL   is_dir;                      /* TRUE = directory, FALSE = file */
+} wm_SdkFileDirEntry;
+
+/*******************************************************************************
 ** I2C types
 ******************************************************************************/
 typedef enum

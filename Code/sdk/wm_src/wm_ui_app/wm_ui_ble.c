@@ -665,20 +665,6 @@ void wm_ui_ble_scan_demo(void)
                   (unsigned long)WM_BLE_FUEL_COUNT);
 }
 
-void wm_ui_ble_read_demo(void)
-{
-    wm_printf("\r\n--- BLE: Read peripherals ---\r\n");
-
-    if (!prv_ble_ready())
-        return;
-
-    if (!s_scanning && !prv_scan_start())
-        return;
-
-    prv_fuel_print();
-    prv_health_exchange(FALSE);   /* one-shot: close the link when done */
-}
-
 void wm_ui_ble_monitor_demo(void)
 {
     wm_printf("\r\n--- BLE: Periodic read ---\r\n");

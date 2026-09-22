@@ -96,6 +96,8 @@ extern unsigned int WM_SIM2_DET_GPIO;
  /* GPIO Functions */
 void wm_gpio_init(void);
 void wm_configure_key_GPIO(uint32_t key, void (*int_handler)(void));
+void wm_configure_input_GPIO(uint32_t pin, void (*int_handler)(void),
+                             uint8_t edge, uint8_t pull);
 void wm_configure_ctrl_GPIO(uint32_t pin, uint8_t initial_value);
 
 /* Amplifier GPIO Control */
@@ -148,12 +150,28 @@ typedef enum
 
 void wm_GPS_LNA_CTRL(wm_lna_mode_e mode);
 
+/* Relay outputs (active high). No-op on boards without relays. */
+typedef enum
+{
+	WM_RELAY_1 = 0,
+	WM_RELAY_2
+} wm_relay_e;
+
+void wm_RELAY_CTRL(wm_relay_e relay, BOOL on);
+
+/* ACC / ignition sense (active low). FALSE on boards without it. */
+BOOL wm_ACC_is_on(void);
+void WM_ACC_IntHandler(void);
+
 /* BLE enable control */
 void wm_BLE_EN(BOOL enable);
 
 /* Board configuration (set per board in wm_gpio_init) */
 
 /* GPS */
+extern BOOL ACC_SUPPORT;
+extern unsigned int ACC_DET;
+
 extern BOOL GPS_SUPPORT;
 extern unsigned int GPS_UART_PORT;
 extern unsigned int GPS_UART_MUX_FUNC;

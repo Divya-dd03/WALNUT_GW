@@ -59,8 +59,8 @@
 #define WM_CURRENT_DEBUG_MODE WM_DEBUG_DBG_UART_MODE // WM_DEBUG_DEV_MODE
 #define WM_CURRENT_LOG_LEVEL WM_LOG_LEVEL_DEBUG
 #define WM_CURRENT_BATTERY WM_BATTERY_2000_mAH
-#define WM_CURRENT_BOARD WM_EVAL_GPS_V1
-#define WM_CURRENT_SLEEP_MODE WM_SLEEP_MODE_OFF // WM_SLEEP_MODE_ON
+#define WM_CURRENT_BOARD WM_PCB_Z631_V1
+#define WM_CURRENT_SLEEP_MODE WM_SLEEP_MODE_ON
 
 #if(WM_CURRENT_BOARD == WM_PCB_Z628_V1)
 #define WM_EXT_CDC_SUPPORT  1
@@ -70,9 +70,21 @@
 
 /* GPS Settings ------------------------------------------------------------------*/
 #define WM_GPS_SUPPORT              1
+#define WM_AGNSS_SUPPORT            1   /* needs WM_GPS_SUPPORT */
+
+#if WM_AGNSS_SUPPORT && !WM_GPS_SUPPORT
+#error "WM_AGNSS_SUPPORT requires WM_GPS_SUPPORT"
+#endif
 
 /* BLE Settings ------------------------------------------------------------------*/
 #define WM_BLE_SUPPORT              1
+
+/* External Flash Settings ------------------------------------------------------------------*/
+#if(WM_CURRENT_BOARD == WM_PCB_Z631_V1)
+#define WM_EXT_FLASH_SUPPORT  1
+#else
+#define WM_EXT_FLASH_SUPPORT  0
+#endif
 
 /* System Build Purpose ------------------------------------------------------------------*/
 #define WM_PROD_APP 77

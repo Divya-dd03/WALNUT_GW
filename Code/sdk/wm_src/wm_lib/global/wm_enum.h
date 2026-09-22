@@ -88,6 +88,8 @@ typedef enum
     WM_DEMO_GPS_STREAM,    /* wm_sdk_gps_set_fix_callback (live fixes)             */
     WM_DEMO_GPS_NMEA,      /* wm_sdk_gps_set_nmea_callback (raw sentences)         */
     WM_DEMO_GPS_POWER_OFF, /* wm_sdk_gps_set_power_status(0)                       */
+    WM_DEMO_GPS_TTFF,      /* cold start + AGNSS, to measure TTFF                  */
+    WM_DEMO_GPS_MODE,      /* wm_sdk_gps_set_mode: GPS + GLONASS only              */
     WM_DEMO_TCP,           /* wm_sdk_tcp_*      */
     /* HTTPS demos, all in wm_ui_https.c. */
     WM_DEMO_HTTPS,         /* wm_sdk_https_*: GET, synchronous                   */
@@ -112,11 +114,14 @@ typedef enum
     /* MQTT lives in its own demo file (wm_ui_mqtt.c). */
     WM_DEMO_MQTT,          /* wm_sdk_mqtt_*: connect + stream raw NMEA (toggle)  */
     WM_DEMO_LED,           /* wm_sdk_led_*: R/G/B indicator LEDs + blink         */
+    WM_DEMO_LED_ALL_ON,    /* wm_sdk_led_set_state: all three LEDs steady on     */
+    WM_DEMO_LED_ALL_OFF,   /* wm_sdk_led_set_state: all three LEDs off           */
     /* BLE demos, all in wm_ui_ble.c. */
     WM_DEMO_BLE_SCAN,      /* wm_sdk_ble_scan_*: filtered scan (toggle)          */
-    WM_DEMO_BLE_READ,      /* fuel readings + one Autoguard health exchange   */
-    WM_DEMO_BLE_MONITOR,   /* repeat the read on a period (toggle)            */
-    WM_DEMO_BLE_POWER_OFF  /* wm_sdk_ble_set_power_status(0)                     */
+    WM_DEMO_BLE_MONITOR,   /* fuel readings + Autoguard health, on a period (toggle) */
+    WM_DEMO_BLE_POWER_OFF, /* wm_sdk_ble_set_power_status(0)                     */
+    WM_DEMO_RELAY_1,       /* wm_RELAY_CTRL(WM_RELAY_1): relay 1 output (toggle) */
+    WM_DEMO_RELAY_2        /* wm_RELAY_CTRL(WM_RELAY_2): relay 2 output (toggle) */
 }WM_TASK_SELECTION;
 
 /* HTTP Control */

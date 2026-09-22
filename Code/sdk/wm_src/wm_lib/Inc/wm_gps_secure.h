@@ -40,7 +40,7 @@ extern "C"
 #define WM_GPS_CHIP_BK1616P   1      /* Beken, "$POLCFG..." commands */
 #define WM_GPS_CHIP_CC1161W   2      /* ICOE, "ICOE Protocol"        */
 
-#define WM_GPS_CURRENT_CHIP   WM_GPS_CHIP_BK1616P
+#define WM_GPS_CURRENT_CHIP   WM_GPS_CHIP_CC1161W
 
 #if (WM_GPS_CURRENT_CHIP == WM_GPS_CHIP_BK1616P)
 
@@ -98,6 +98,16 @@ typedef void (*wm_gps_fix_cb)(const WM_GPS_Position *fix);
  * blocked while this runs. */
 typedef void (*wm_gps_nmea_cb)(const char *line, uint16_t len);
 
+/* What a TTFF figure was measured against. CONTINUOUS means the receiver never
+ * stopped, so the figure is a reacquisition, not a TTFF. */
+typedef enum
+{
+    WM_GPS_START_CONTINUOUS = 0, /* port reopened, receiver kept running */
+    WM_GPS_START_RESTART,        /* receiver rebooted (banner seen)      */
+    WM_GPS_START_HOT,            /* $RESET,0,h00                         */
+    WM_GPS_START_COLD            /* $RESET,0,hFF                         */
+} wm_gps_start_kind_e;
+
 /*******************************************************************************
 ** Functions
 ******************************************************************************/
@@ -105,8 +115,12 @@ typedef void (*wm_gps_nmea_cb)(const char *line, uint16_t len);
  * the receiver on with the default configuration. Idempotent. */
 void      wm_gps_init(void);
 
-/* Power the receiver on (UART open + reset pulse + default config) / off
- * (UART close + hold in reset; the shared 3V3 LDO is left up). */
+/* Power the receiver on (UART open + reset pulse + default config) / off (UART
+ * close + hold in reset; the shared 3V3 LDO is left up).
+ *
+ * Where the board does not bond RST_N (GPS_EN == 0, as on Z631_V1) there is no
+ * reset: the receiver runs continuously and "off" saves LNA current only. Use
+ * wm_gps_reset(true) for a cold start there. */
 SC_STATUS wm_gps_power_on(void);
 SC_STATUS wm_gps_power_off(void);
 
@@ -114,15 +128,23 @@ SC_STATUS wm_gps_power_off(void);
 SC_STATUS wm_gps_start(void);
 SC_STATUS wm_gps_stop(void);
 
-/* Copy the last fix under mutex. Returns SC_FAIL if no valid fix has ever been
- * seen (out is still populated with zeros in that case). */
+/* Copy the most recent epoch under mutex. SC_FAIL unless that epoch itself had
+ * a fix; it carries no position when it did not. 'out' is always populated. */
 SC_STATUS wm_gps_get_fix(WM_GPS_Position *out);
+
+/* Copy the last epoch that did have a fix, however old (SC_FAIL if none since
+ * the receiver last started). Pair with wm_gps_fix_age_ms(). */
+SC_STATUS wm_gps_get_last_known(WM_GPS_Position *out);
 
 /* true if the most recent RMC epoch reported a valid fix. */
 bool      wm_gps_has_fix(void);
 
 /* Milliseconds since the last fix was committed (0 if never). */
 uint32_t  wm_gps_fix_age_ms(void);
+
+/* Last bring-up to first valid fix, in ms (0 until it arrives). 'kind' may be
+ * NULL; see wm_gps_start_kind_e. Input predating the bring-up is discarded. */
+uint32_t  wm_gps_ttff_ms(wm_gps_start_kind_e *kind);
 
 /* Register (or clear, with NULL) the per-epoch fix callback. */
 void      wm_gps_set_fix_cb(wm_gps_fix_cb cb);
@@ -142,6 +164,67 @@ SC_STATUS wm_gps_reset(bool cold);                      /* cold vs hot restart  
 /* Send a raw command body (pass the whole sentence, '$' included). The line
  * terminator is appended per WM_GPS_CMD_TERM. */
 SC_STATUS wm_gps_send_cmd(const char *nmea_cmd);
+
+#if (WM_GPS_CURRENT_CHIP == WM_GPS_CHIP_CC1161W)
+/* Read the enabled signal bits back from the receiver. Unlike the setter this
+ * does not reset it. The receiver saves the mask to its own flash when it is
+ * set, so this survives a reboot where a cached value would not. SC_FAIL if
+ * the port is closed or no $CFGSYS reply arrives. */
+SC_STATUS wm_gps_get_constellations(uint32_t *mask);
+
+/* Inject AGNSS assistance as one uninterrupted sequence: $AIDTIME, $AIDPOS if
+ * given, the raw RTCM bytes, then $AIDINFO to confirm what was taken. Pass
+ * sentence bodies without the "*hh" - it is appended. 'aidpos' and 'rtcm' may
+ * be NULL. Blocks for the duration (~2 s for a full set) and holds off every
+ * other command on the module, which the receiver requires.
+ *
+ * SC_FAIL if the port is closed, $AIDTIME was rejected (the blob is then not
+ * sent), the blob could not be written in full, or $AIDINFO comes back without
+ * the ephemeris bit. */
+SC_STATUS wm_gps_inject_assist(const char *aidtime, const char *aidpos,
+                               const uint8_t *rtcm, uint32_t rtcm_len);
+
+#if WM_AGNSS_SUPPORT
+/* AGNSS: fetch RTCM assistance over HTTP and inject it, turning a ~26 s cold
+ * start into a few seconds. Driven by its own task - the data call is not up
+ * when wm_gps_init() runs. */
+typedef enum
+{
+    WM_AGNSS_IDLE = 0,
+    WM_AGNSS_WAIT_NET,
+    WM_AGNSS_FETCHING,
+    WM_AGNSS_INJECTING,
+    WM_AGNSS_DONE,
+    WM_AGNSS_FAILED
+} wm_agnss_state_e;
+
+/* $AIDINFO AType bits: what the receiver confirms it is using. */
+#define WM_GPS_ATYPE_EPH    (1uL << 0)   /* ephemeris aiding accepted */
+#define WM_GPS_ATYPE_POS    (1uL << 4)   /* $AIDPOS in use            */
+#define WM_GPS_ATYPE_TIME   (1uL << 8)   /* $AIDTIME in use           */
+
+typedef struct
+{
+    wm_agnss_state_e state;
+    uint32_t stamp_ms;          /* last success (0 = never)    */
+    uint16_t requests_today;    /* attempts that reached the server */
+    uint16_t last_bytes;
+    int      last_http_status;
+    uint32_t last_atype;        /* $AIDINFO AType; 0 = unverified   */
+    uint8_t  last_gps_usable;   /* usable GPS ephemerides after inject */
+    uint8_t  last_bds_usable;   /* usable BDS ephemerides after inject */
+} wm_agnss_status_t;
+
+/* Create the AGNSS task. Idempotent; call before wm_gps_init(). */
+void      wm_agnss_init(void);
+
+/* Queue a cycle. Non-blocking. 'force' skips the minimum re-fetch interval but
+ * never the daily request cap. */
+SC_STATUS wm_agnss_request(bool force);
+
+void      wm_agnss_get_status(wm_agnss_status_t *out);
+#endif
+#endif
 
 #ifdef __cplusplus
 }

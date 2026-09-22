@@ -116,6 +116,7 @@ static void wm_urc_monitor_task(void *arg)
 ******************************************************************************/
 static BOOL s_gps_stream_on = FALSE;   /* TRUE while the fix callback is set  */
 static BOOL s_gps_nmea_on   = FALSE;   /* TRUE while the raw NMEA tap is set  */
+static BOOL s_gps_mode_narrow = FALSE; /* TRUE while narrowed to GPS+GLONASS  */
 
 /* Integer-only rendering: wm_printf carries no floating-point formatting, so
  * degrees go out as micro-degrees, altitude as cm and speed/course as 0.1 units. */
@@ -133,6 +134,46 @@ static void wm_gps_print_navdata(const char *tag, const wm_SdkGpsNavData *nav)
               (unsigned)nav->utc.minute, (unsigned)nav->utc.second);
 }
 
+/* Name what is enabled rather than echoing the raw mask. */
+static void wm_gps_print_constellations(UINT32 sys)
+{
+    static const struct { UINT32 bit; const char *name; } SYS[] =
+    {
+        { WM_SDK_GPS_SYS_GPS,     "GPS"     },
+        { WM_SDK_GPS_SYS_BDS,     "BDS"     },
+#if (WM_SDK_GPS_CURRENT_CHIP == WM_SDK_GPS_CHIP_CC1161W)
+        { WM_SDK_GPS_SYS_BDS_B1C, "BDS-B1C" },
+#endif
+        { WM_SDK_GPS_SYS_GLO,     "GLONASS" },
+        { WM_SDK_GPS_SYS_GAL,     "Galileo" },
+#if (WM_SDK_GPS_CURRENT_CHIP == WM_SDK_GPS_CHIP_CC1161W)
+        { WM_SDK_GPS_SYS_QZSS,    "QZSS"    },
+        { WM_SDK_GPS_SYS_SBAS,    "SBAS"    },
+#endif
+    };
+    char     line[96];
+    unsigned i;
+
+    line[0] = '\0';
+    for (i = 0; i < sizeof(SYS) / sizeof(SYS[0]); i++)
+    {
+        if (0 == (sys & SYS[i].bit))
+            continue;
+        if (line[0] != '\0')
+            strcat(line, ", ");
+        strcat(line, SYS[i].name);
+    }
+
+    /* The receiver supports signals this list does not name, so show the
+     * leftovers rather than dropping them silently. */
+    if (0 != (sys & ~(UINT32)WM_SDK_GPS_SYS_ALL))
+        wm_printf("constellations: %s +0x%lX\r\n",
+                  (line[0] != '\0') ? line : "none",
+                  (unsigned long)(sys & ~(UINT32)WM_SDK_GPS_SYS_ALL));
+    else
+        wm_printf("constellations: %s\r\n", (line[0] != '\0') ? line : "none");
+}
+
 /* One line per epoch, so the callback stays short even at the highest rate. */
 static void wm_gps_demo_fix_cb(const wm_SdkGpsNavData *nav)
 {
@@ -144,11 +185,13 @@ static void wm_gps_demo_fix_cb(const wm_SdkGpsNavData *nav)
               (unsigned)nav->utc.second);
 }
 
-/* Every sentence as the receiver sent it, checksum not yet verified. */
+/* Every sentence as the receiver sent it, checksum not yet verified. Printed
+ * bare - no tag - so a host NMEA parser can consume the port directly; this
+ * matches what the MQTT path publishes (wm_ui_mqtt.c). */
 static void wm_gps_demo_nmea_cb(const char *sentence, UINT16 len)
 {
     (void)len;
-    wm_printf("[NMEA] %s\r\n", sentence);
+    wm_printf("%s\r\n", sentence);
 }
 
 /*******************************************************************************
@@ -156,6 +199,13 @@ static void wm_gps_demo_nmea_cb(const char *sentence, UINT16 len)
 ** incoming messages are still captured between runs of the SMS options.
 ******************************************************************************/
 static void *s_sms_q = NULL;   /* registered receive queue; created once */
+
+/*******************************************************************************
+** Relay demo - the outputs latch in hardware, so the menu keeps the state it
+** last drove in order to report (and toggle) it.
+******************************************************************************/
+static BOOL s_relay_1_on = FALSE;
+static BOOL s_relay_2_on = FALSE;
 
 /*******************************************************************************
 ** USB command dispatcher task
@@ -182,31 +232,36 @@ void sTask_WM_UIProcesser(void *arg)
         "12. GPS: Stream fixes (toggle)",
         "13. GPS: Stream raw NMEA (toggle)",
         "14. GPS: Power off",
-        "15. TCP",
-        "16. HTTPS: GET (sync)",
-        "17. HTTPS: POST (JSON + api key)",
-        "18. HTTPS: GET (async, result on queue)",
-        "19. HTTPS: Download file + verify SHA-256",
-        "20. OTA: Show app + SDK version",
-        "21. OTA: Download + verify + apply APP image",
-        "22. DFOTA: MINI FOTA kernel patch update (async result)",
-        "23. UART",
-        "24. FILE SYSTEM",
-        "25. STORAGE (NVM)",
-        "26. OS / RTOS",
-        "27. DEVICE",
-        "28. GPIO",
-        "29. ADC",
-        "30. I2C",
-        "31. URC",
-        "32. SYSTEM",
-        "33. LOG",
-        "34. MQTT: Connect + stream raw NMEA (toggle)",
-        "35. LED: R/G/B indicator LEDs + blink",
-        "36. BLE: Scan for fuel probes (toggle)",
-        "37. BLE: Read fuel probes + Autoguard health",
-        "38. BLE: Periodic read (toggle)",
-        "39. BLE: Power off",
+        "15. GPS: Cold start + AGNSS (TTFF test)",
+        "16. GPS: Set constellations (GPS + GLONASS, toggle)",
+        "17. TCP",
+        "18. HTTPS: GET (sync)",
+        "19. HTTPS: POST (JSON + api key)",
+        "20. HTTPS: GET (async, result on queue)",
+        "21. HTTPS: Download file + verify SHA-256",
+        "22. OTA: Show app + SDK version",
+        "23. OTA: Download + verify + apply APP image",
+        "24. DFOTA: MINI FOTA kernel patch update (async result)",
+        "25. UART",
+        "26. FILE SYSTEM",
+        "27. STORAGE (NVM)",
+        "28. OS / RTOS",
+        "29. DEVICE",
+        "30. GPIO",
+        "31. ADC",
+        "32. I2C",
+        "33. URC",
+        "34. SYSTEM",
+        "35. LOG",
+        "36. MQTT: Connect + stream raw NMEA (toggle)",
+        "37. LED: R/G/B indicator LEDs + blink",
+        "38. LED: All ON",
+        "39. LED: All OFF",
+        "40. BLE: Scan for fuel probes (toggle)",
+        "41. BLE: Periodic read (toggle)",
+        "42. BLE: Power off",
+        "43. RELAY 1: On/off (toggle)",
+        "44. RELAY 2: On/off (toggle)",
     };
 
     (void)arg;
@@ -481,10 +536,7 @@ void sTask_WM_UIProcesser(void *arg)
         /* ----------------------------------------------------------- GPS: Configure */
         case WM_DEMO_GPS_CONFIG:
         {
-            const UINT32 gps_mode      = WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_GLO | WM_SDK_GPS_SYS_GAL;
             const UINT32 gps_start_hot = 0u;   /* 0=HOT, 1=WARM, 2=COLD          */
-            const UINT32 gps_out_port  = 0u;   /* 0=serial port, 1=URC           */
-            const UINT32 gps_rate_hz   = 1u;   /* see wm_sdk_gps_set_nmea_rate()    */
             UINT8        power         = 0;
 
             wm_printf("\r\n--- GPS: Configure ---\r\n");
@@ -501,21 +553,24 @@ void sTask_WM_UIProcesser(void *arg)
             else
                 wm_printf("hot start -> rc=%ld\r\n",
                           (long)wm_sdk_gps_start_mode(gps_start_hot));
-            wm_sdk_task_sleep(500);   /* let the receiver finish rebooting */
 
-            /* Configure after the restart: it comes back up on its saved
-             * settings, so anything applied before would be discarded. */
-            wm_printf("mode GPS|GLONASS|Galileo -> rc=%ld\r\n",
-                      (long)wm_sdk_gps_set_mode(gps_mode));
-            /* Rate last: enabling output re-applies the receiver default rate. */
-            wm_printf("nmea output -> rc=%ld\r\n",
-                      (long)wm_sdk_gps_enable_nmea_output(gps_out_port));
-            wm_printf("nmea rate %lu Hz -> rc=%ld\r\n", (unsigned long)gps_rate_hz,
-                      (long)wm_sdk_gps_set_nmea_rate(gps_rate_hz));
+            /* Nothing else to send. The ROM defaults are already GGA+RMC at 1 Hz
+             * on GPS|BDS|GLO|GAL|QZSS, so set_mode/enable_nmea_output/set_nmea_rate
+             * would only re-assert them - and set_mode ($CFGSYS) resets the
+             * receiver, throwing away the ephemeris it just started collecting
+             * and turning every start into a cold one. Use wm_sdk_gps_set_mode()
+             * once in production test if B1C/SBAS are wanted; it self-saves. */
 
-            /* wm_sdk_gps_set_gnss_info_period / _open_agps_service /
-             * _set_ap_flash_hot_start are not features of this receiver
-             * (WM_SDK_RESULT_NOT_SUPPORTED), so the demo does not call them. */
+            /* Read back what the receiver is actually running, which is not
+             * necessarily the ROM default - set_mode persists inside it. */
+            {
+                UINT32 sys = 0;
+
+                if (wm_sdk_gps_get_mode(&sys) == WM_SDK_RESULT_SUCCESS)
+                    wm_gps_print_constellations(sys);
+                else
+                    wm_printf("constellations: no reply (receiver powered off?)\r\n");
+            }
 
             wm_printf("(run 'GPS: Stream fixes' to print every epoch)\r\n");
             break;
@@ -604,6 +659,71 @@ void sTask_WM_UIProcesser(void *arg)
             /* 'GPS: Read fix' still reports the last fix while powered down. */
             wm_printf("(re-run 'GPS: Configure' to power the receiver back up)\r\n");
             break;
+
+        /* ------------------------------------------ GPS: Cold start + AGNSS */
+        case WM_DEMO_GPS_TTFF:
+        {
+            UINT8 power = 0;
+
+            wm_printf("\r\n--- GPS: Cold start + AGNSS (TTFF test) ---\r\n");
+
+            if (wm_sdk_gps_get_power_status(&power) != WM_SDK_RESULT_SUCCESS)
+            {
+                wm_printf("GPS not initialised\r\n");
+                break;
+            }
+
+            if (power == 0u)
+                wm_printf("power on -> rc=%ld\r\n",
+                          (long)wm_sdk_gps_set_power_status(1));
+
+            /* Cold drops ephemeris, almanac, position and time, so the next fix
+             * is a real TTFF. This board has no GNSS reset line, so without it
+             * the receiver never stops and there is nothing to measure. */
+            wm_printf("cold start -> rc=%ld\r\n",
+                      (long)wm_sdk_gps_start_mode(2u));
+            wm_printf("AGNSS -> rc=%ld (forced; daily cap still applies)\r\n",
+                      (long)wm_sdk_gps_open_agps_service());
+            wm_printf("watch for 'wm_gps: TTFF <n> ms (cold, aided=yes|no)'\r\n");
+            break;
+        }
+
+        /* -------------------------------------------- GPS: Set constellations */
+        case WM_DEMO_GPS_MODE:
+        {
+            const UINT32 sys_gps_glo = WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_GLO;
+            const UINT32 sys_default = WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_BDS |
+                                       WM_SDK_GPS_SYS_GLO | WM_SDK_GPS_SYS_GAL |
+                                       WM_SDK_GPS_SYS_QZSS;
+            UINT32       want = s_gps_mode_narrow ? sys_default : sys_gps_glo;
+            UINT32       sys  = 0;
+            wm_SdkResult sr;
+
+            wm_printf("\r\n--- GPS: Set constellations ---\r\n");
+
+            /* $CFGSYS resets the receiver and saves to its own flash, so this
+             * outlives a reboot and makes the next start a cold one. */
+            sr = wm_sdk_gps_set_mode(want);
+            wm_printf("set 0x%lX -> rc=%ld\r\n", (unsigned long)want, (long)sr);
+            if (sr != WM_SDK_RESULT_SUCCESS)
+            {
+                wm_printf("(receiver powered off, or mode refused)\r\n");
+                break;
+            }
+            s_gps_mode_narrow = s_gps_mode_narrow ? FALSE : TRUE;
+
+            /* It is restarting; give it time before asking what it kept. */
+            wm_sdk_task_sleep(1000);
+
+            if (wm_sdk_gps_get_mode(&sys) == WM_SDK_RESULT_SUCCESS)
+                wm_gps_print_constellations(sys);
+            else
+                wm_printf("read back: no reply (still restarting?)\r\n");
+
+            wm_printf("re-run to %s\r\n", s_gps_mode_narrow
+                      ? "restore the default set" : "narrow to GPS + GLONASS");
+            break;
+        }
 
         /* -------------------------------------------------------------------- TCP */
         case WM_DEMO_TCP:
@@ -711,6 +831,47 @@ void sTask_WM_UIProcesser(void *arg)
                       (wm_sdk_file_rename(path, path2) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
             wm_printf("delete -> %s\r\n",
                       (wm_sdk_file_delete(path2) == WM_SDK_RESULT_SUCCESS) ? "ok" : "fail");
+
+            /* disk figures. D:/ answers NOT_SUPPORTED unless the build carries
+             * external flash - switch it with wm_extfs.bat. */
+            {
+                INT64        total = 0, freeb = 0, used = 0;
+                wm_SdkResult rc;
+
+                rc = wm_sdk_file_get_disk_info("C:/", &total, &freeb, &used);
+                if (rc == WM_SDK_RESULT_SUCCESS)
+                    wm_printf("C:/ total=%ld free=%ld used=%ld bytes\r\n",
+                              (long)total, (long)freeb, (long)used);
+                else
+                    wm_printf("C:/ disk info -> rc=%ld\r\n", (long)rc);
+
+                rc = wm_sdk_file_get_disk_info("D:/", &total, &freeb, &used);
+                if (rc == WM_SDK_RESULT_SUCCESS)
+                    wm_printf("D:/ total=%ld free=%ld used=%ld bytes\r\n",
+                              (long)total, (long)freeb, (long)used);
+                else
+                    wm_printf("D:/ disk info -> rc=%ld\r\n", (long)rc);
+            }
+
+            /* list the root */
+            {
+                wm_SdkFileDirEntry list[12];
+                UINT32 cnt = 0, i;
+
+                if (wm_sdk_file_list_dir("C:/", list, (UINT32)(sizeof(list) / sizeof(list[0])),
+                                         &cnt) == WM_SDK_RESULT_SUCCESS)
+                {
+                    wm_printf("dir C:/ -> %lu entries\r\n", (unsigned long)cnt);
+                    for (i = 0; i < cnt; i++)
+                        wm_printf("  [%s] %lu %s\r\n", list[i].name,
+                                  (unsigned long)list[i].size,
+                                  list[i].is_dir ? "dir" : "file");
+                }
+                else
+                {
+                    wm_printf("list dir failed\r\n");
+                }
+            }
             break;
         }
 
@@ -1036,15 +1197,29 @@ void sTask_WM_UIProcesser(void *arg)
             break;
         }
 
+        /* ----------------------------------------------------------- LED: All ON */
+        case WM_DEMO_LED_ALL_ON:
+            wm_printf("\r\n--- LED: All ON ---\r\n");
+            /* Steady light: the LEDs stay on until another set_state call. */
+            wm_printf("all LEDs on -> %s\r\n",
+                      (wm_sdk_led_set_state(WM_SDK_LED_CH_ALL, WM_SDK_LED_BLINK_NONE, 0u)
+                           == WM_SDK_RESULT_SUCCESS) ? "ok" : "FAILED");
+            break;
+
+        /* ---------------------------------------------------------- LED: All OFF */
+        case WM_DEMO_LED_ALL_OFF:
+            wm_printf("\r\n--- LED: All OFF ---\r\n");
+            /* An empty channel mask also cancels any blink still running. */
+            wm_printf("all LEDs off -> %s\r\n",
+                      (wm_sdk_led_set_state(WM_SDK_LED_CH_NONE, WM_SDK_LED_BLINK_NONE, 0u)
+                           == WM_SDK_RESULT_SUCCESS) ? "ok" : "FAILED");
+            break;
+
         /* -------------------------------------------------------------------- BLE */
         /* Implemented in wm_ui_ble.c - the BLE demos own a background task and
          * the peripheral wire formats, so they live in their own file. */
         case WM_DEMO_BLE_SCAN:
             wm_ui_ble_scan_demo();
-            break;
-
-        case WM_DEMO_BLE_READ:
-            wm_ui_ble_read_demo();
             break;
 
         case WM_DEMO_BLE_MONITOR:
@@ -1053,6 +1228,30 @@ void sTask_WM_UIProcesser(void *arg)
 
         case WM_DEMO_BLE_POWER_OFF:
             wm_ui_ble_power_off_demo();
+            break;
+
+        /* -------------------------------------------------------------- RELAY 1 */
+        case WM_DEMO_RELAY_1:
+            wm_printf("\r\n--- RELAY 1 ---\r\n");
+            /* Active-high output driven straight from the platform library. It
+             * holds its state until the next call, so re-run this option to
+             * release the contacts. There is no read-back - listen for them. */
+            s_relay_1_on = s_relay_1_on ? FALSE : TRUE;
+            wm_RELAY_CTRL(WM_RELAY_1, s_relay_1_on);
+            wm_printf("RELAY 1 %s (re-run this option to switch it %s)\r\n",
+                      s_relay_1_on ? "ON"  : "OFF",
+                      s_relay_1_on ? "off" : "on");
+            break;
+
+        /* -------------------------------------------------------------- RELAY 2 */
+        case WM_DEMO_RELAY_2:
+            wm_printf("\r\n--- RELAY 2 ---\r\n");
+            /* Independent of relay 1: both can be closed at the same time. */
+            s_relay_2_on = s_relay_2_on ? FALSE : TRUE;
+            wm_RELAY_CTRL(WM_RELAY_2, s_relay_2_on);
+            wm_printf("RELAY 2 %s (re-run this option to switch it %s)\r\n",
+                      s_relay_2_on ? "ON"  : "OFF",
+                      s_relay_2_on ? "off" : "on");
             break;
 
         default:
@@ -1076,4 +1275,9 @@ void WM_Entry_Task_Top_Most(void)
     wm_ui_app_init();       /* create WM_UI_msgq + UIPROC dispatcher */
     wm_ui_dfota_init();     /* MINI FOTA status callback - register at boot */
     RTI_LOG("WEGW Common Gateway app: WM_Entry_Task_Top_Most done");
+}
+
+void wm_ev_acc_state(BOOL ignition_on)
+{
+    wm_printf(ignition_on ? "\r\n ACC : IGNITION ON \r\n" : "\r\n ACC : IGNITION OFF \r\n");
 }

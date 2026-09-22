@@ -35,8 +35,9 @@ extern "C"
 ** Defines
 ******************************************************************************/
 /* NMEA v4.10 caps a sentence at 82 chars, but multi-constellation GSA/GSV run
- * past it. Longer lines are discarded to the next '$'. */
-#define WM_NMEA_LINE_MAX 128
+ * past it, and $AIDINFO's eight 64-bit masks reach ~174. Matches the ICOE
+ * protocol maximum; longer lines are discarded to the next '$'. */
+#define WM_NMEA_LINE_MAX 256
 
 /*******************************************************************************
 ** Type Definitions

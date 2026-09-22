@@ -49,6 +49,7 @@ extern void wm_ev_key_2_state(UINT8 key_press_state);
 extern void wm_ev_key_3_state(UINT8 key_press_state);
 extern void wm_ev_key_4_state(UINT8 key_press_state);
 extern void wm_ev_key_5_state(UINT8 key_press_state);
+extern void wm_ev_acc_state(BOOL ignition_on);
 
 /*******************************************************************************
 ** Variables
@@ -71,6 +72,8 @@ void key_2_poll(void* arg);
 void key_3_poll(void* arg);
 void key_4_poll(void* arg);
 void key_5_poll(void* arg);
+
+void acc_poll(void* arg);
 
 #ifdef __cplusplus
 }
