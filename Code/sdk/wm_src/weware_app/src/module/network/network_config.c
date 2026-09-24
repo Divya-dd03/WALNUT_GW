@@ -130,6 +130,34 @@ Result network_config_set_apn(const char *apn, const char *username, const char 
     return RESULT_SUCCESS;
 }
 
+void network_config_apply_forced_apn(void)
+{
+#ifdef NETWORK_FORCE_APN
+    NetworkConfig *net_config = network_config_get_storage();
+    if (!net_config) {
+        LOG_ERROR("NET CFG storage not available for forced APN");
+        return;
+    }
+
+    /* Already active (persisted from an earlier boot): skip the flash write. */
+    if (strcmp(net_config->apn, NETWORK_FORCE_APN) == 0 &&
+        strcmp(net_config->username, NETWORK_FORCE_APN_USERNAME) == 0 &&
+        strcmp(net_config->password, NETWORK_FORCE_APN_PASSWORD) == 0) {
+        LOG_INFO("NET CFG forced APN already active: %s", net_config->apn);
+        return;
+    }
+
+    LOG_WARN("NET CFG forcing APN %s -> %s (compile-time override)",
+                 net_config->apn[0] ? net_config->apn : "(empty)",
+                 NETWORK_FORCE_APN);
+
+    if (network_config_set_apn(NETWORK_FORCE_APN,
+                               NETWORK_FORCE_APN_USERNAME,
+                               NETWORK_FORCE_APN_PASSWORD) != RESULT_SUCCESS)
+        LOG_ERROR("NET CFG forced APN override failed, keeping %s", net_config->apn);
+#endif /* NETWORK_FORCE_APN */
+}
+
 Result network_config_set(const char *config_string)
 {
     if (!config_string) {

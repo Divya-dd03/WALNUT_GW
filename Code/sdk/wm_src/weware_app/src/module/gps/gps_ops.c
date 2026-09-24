@@ -35,6 +35,13 @@
 #include "wm_sdk_network.h"
 #include "wm_sdk_system.h"
 
+#ifdef GPS_DEBUG
+/* Board table the prebuilt wm_gpio_init() fills in from wm_board_ID. Read-only
+ * here, purely so the GNSS bring-up can report what WM_CURRENT_BOARD actually
+ * selected - the board switch itself lives inside lib_wmsrc.a. */
+#include "wm_gpio.h"
+#endif /* GPS_DEBUG */
+
 // app
 #include "module/gps/gps_ops.h"
 #include "module/gps/gps_manager.h"
@@ -268,6 +275,45 @@ void gps_ops_apply_time_source_to_packet(GpsPacket *p)
 /* ============================================================================
  * GNSS configuration
  * ============================================================================ */
+#ifdef GPS_DEBUG
+ /**
+ * One-shot dump of the GNSS half of the board table that the prebuilt
+ * wm_gpio_init() resolved from wm_board_ID (= WM_CURRENT_BOARD).
+ *
+ * These are the values the SDK's GPS driver really opens: prvUartInit() calls
+ * drvUartOpen(GPS_UART_PORT), so GPS_UART_PORT is the drvUart index, and
+ * GPS_UART_TX/RX are the pads it muxes with GPS_UART_MUX_FUNC. Logging them
+ * is the only way to confirm on-target what the board switch picked, because
+ * that switch lives inside lib_wmsrc.a and is invisible to the build.
+ */
+static void gps_ops_log_board_uart_config(void)
+{
+    static BOOL s_board_cfg_logged = FALSE;
+
+    if (s_board_cfg_logged)
+        return;
+    s_board_cfg_logged = TRUE;
+
+    LOG_INFO("GNSS board cfg: support=%d drvUart_port=%u mux_func=%u baud=115200",
+             GPS_SUPPORT ? 1 : 0, (unsigned)GPS_UART_PORT, (unsigned)GPS_UART_MUX_FUNC);
+    LOG_INFO("GNSS board cfg: tx_pad=%u (mux %u) rx_pad=%u (mux %u)",
+             (unsigned)GPS_UART_TX, (unsigned)GPS_UART_TX_MUX,
+             (unsigned)GPS_UART_RX, (unsigned)GPS_UART_RX_MUX);
+    LOG_INFO("GNSS board cfg: gps_en=%u (mux %u)%s",
+             (unsigned)GPS_EN, (unsigned)GPS_EN_MUX,
+             (GPS_EN == 0u) ? " [wm_GPS_EN() is a no-op: RST_N never driven]" : "");
+    LOG_INFO("BLE board cfg: support=%d drvUart_port=%u tx_pad=%u rx_pad=%u",
+             BLE_SUPPORT ? 1 : 0, (unsigned)BLE_UART_PORT,
+             (unsigned)BLE_UART_TX, (unsigned)BLE_UART_RX);
+
+    if (GPS_UART_TX_MUX == 0u || GPS_UART_RX_MUX == 0u)
+        LOG_ERROR("GNSS UART pads not muxed for this board - wm_gps_power_on() refuses to open the port");
+    if (BLE_SUPPORT && BLE_UART_PORT == GPS_UART_PORT)
+        LOG_ERROR("GNSS and BLE share drvUart port %u - one of them is on the wrong port",
+                  (unsigned)GPS_UART_PORT);
+}
+#endif /* GPS_DEBUG */
+
 /** @return TRUE when NMEA output is configured. */
 static BOOL gps_ops_configure_nmea_output(void)
 {
@@ -289,7 +335,29 @@ static BOOL gps_ops_configure_nmea_output(void)
         return TRUE;
     }
 
-    LOG_WARN("GNSS NMEA output configure failed (%d), retry next cycle", (int)nr);
+#ifdef GPS_DEBUG
+    else
+    {
+#endif /* GPS_DEBUG */
+        LOG_WARN("GNSS NMEA output configure failed (%d, mode=%u): no ACK from receiver on drvUart %u, retry next cycle",
+             (int)nr, (unsigned)GPS_WALNUT_NMEA_DATA_GET_MODE, (unsigned)GPS_UART_PORT);
+    
+#ifdef GPS_DEBUG
+        nr = wm_sdk_gps_enable_nmea_output(1u);
+        if (nr == WM_SDK_RESULT_SUCCESS) {
+            g_gps.gnss_nmea_output_configured = TRUE;
+            LOG_INFO("GNSS NMEA output configured; navdata should refresh");
+            return TRUE;
+        }
+        if (nr == WM_SDK_RESULT_NOT_SUPPORTED) {
+            g_gps.gnss_nmea_output_configured = TRUE;
+            return TRUE;
+        }
+        LOG_WARN("GNSS NMEA output configure failed (%d, mode=%u): no ACK from receiver on drvUart %u, retry next cycle",
+             (int)nr, (unsigned)1, (unsigned)GPS_UART_PORT);
+    }
+#endif /* GPS_DEBUG */
+    
     return FALSE;
 }
 
@@ -310,6 +378,10 @@ BOOL gps_ops_power_on_and_configure_nmea_step(void)
 
     if (s_pwr_nmea_setup_done)
         return TRUE;
+
+#ifdef GPS_DEBUG
+    gps_ops_log_board_uart_config();
+#endif /* GPS_DEBUG */
 
     wm_sdk_task_sleep(GPS_GNSS_POWER_ON_PRE_DELAY_MS);
 
@@ -409,11 +481,15 @@ static BOOL gps_ops_can_proceed_config(void)
         if (s_last_gnss_power_status_check_uptime == 0u ||
             (now - s_last_gnss_power_status_check_uptime) >= GPS_POWER_STATUS_CHECK_GAP_SEC) {
             UINT8 power_on = 0;
-            if (wm_sdk_gps_get_power_status(&power_on) == WM_SDK_RESULT_SUCCESS)
+            wm_SdkResult pr = wm_sdk_gps_get_power_status(&power_on);
+            if (pr == WM_SDK_RESULT_SUCCESS)
                 s_cached_gnss_power_on = power_on ? TRUE : FALSE;
             else
                 s_cached_gnss_power_on = FALSE;
             s_last_gnss_power_status_check_uptime = now;
+
+            LOG_DEBUG("GNSS power status: rc=%d sdk_flag=%u (advisory only)",
+                      (int)pr, (unsigned)power_on);
         }
     }
 
@@ -424,6 +500,33 @@ void gps_ops_retry_configuration(void)
 {
     if (s_gps_power_forced_off)
         return;
+
+#ifdef GPS_DEBUG
+    gps_ops_log_board_uart_config();
+    {
+        UINT32 mode = 0;
+        wm_SdkResult err = wm_sdk_gps_get_mode(&mode);
+        if (err == WM_SDK_RESULT_SUCCESS) {
+            LOG_DEBUG("GNSS mode: 0x%08X\r\n", (unsigned int)mode);
+            if (mode & WM_SDK_GPS_SYS_GPS)
+                LOG_DEBUG("GPS\r\n");
+            if (mode & WM_SDK_GPS_SYS_BDS)
+                LOG_DEBUG("BDS B1I\r\n");
+            if (mode & WM_SDK_GPS_SYS_BDS_B1C)
+                LOG_DEBUG("BDS B1C\r\n");
+            if (mode & WM_SDK_GPS_SYS_GLO)
+                LOG_DEBUG("GLONASS\r\n");
+            if (mode & WM_SDK_GPS_SYS_GAL)
+                LOG_DEBUG("Galileo\r\n");
+            if (mode & WM_SDK_GPS_SYS_QZSS)
+                LOG_DEBUG("QZSS\r\n");
+            if (mode & WM_SDK_GPS_SYS_SBAS)
+                LOG_DEBUG("SBAS\r\n");
+        } else {
+            LOG_DEBUG("Failed to get GNSS mode: %d\r\n", (int)err);
+        }
+    }
+#endif /* GPS_DEBUG */
 
     /* Broadcast EVENT_GPS_CONFIGURED once when core config is done: mode, NMEA rate, NMEA output, start mode. */
     {
@@ -444,8 +547,18 @@ void gps_ops_retry_configuration(void)
         }
     }
 
-    if (!gps_ops_can_proceed_config())
+    if (!gps_ops_can_proceed_config()) {
+        LOG_DEBUG("GNSS config gated: nmea_streaming=%d sdk_power_flag=%d",
+                  g_gps.gnss_nmea_output_started ? 1 : 0,
+                  s_cached_gnss_power_on ? 1 : 0);
         return;
+    }
+#ifdef GPS_DEBUG
+    LOG_DEBUG("GNSS config step: nmea=%d mode=%d rate=%d start=%d info=%d",
+              g_gps.gnss_nmea_output_configured ? 1 : 0, g_gps.gnss_mode_set ? 1 : 0,
+              g_gps.gnss_nmea_rate_set ? 1 : 0, g_gps.gnss_start_mode_set ? 1 : 0,
+              g_gps.gnss_info_report_set ? 1 : 0);
+#endif /* GPS_DEBUG */
 
     /* GNSS is powered but config still isn't complete. If it never completes, a
      * config step (mode/rate/start/info set) is persistently failing - log once. */
@@ -463,18 +576,25 @@ void gps_ops_retry_configuration(void)
     /* Set GPS mode */
     if (!g_gps.gnss_mode_set) {
         UINT32 target_mode = WM_SDK_GPS_SYS_GPS | WM_SDK_GPS_SYS_GLO;  /* reference: GPS+GLONASS */
-        if (wm_sdk_gps_set_mode(target_mode) == WM_SDK_RESULT_SUCCESS) {
+        wm_SdkResult mr = wm_sdk_gps_set_mode(target_mode);
+        if (mr == WM_SDK_RESULT_SUCCESS) {
             g_gps.gnss_mode_set = TRUE;
             LOG_INFO("GNSS mode set (0x%x)", (unsigned)target_mode);
+        } else {
+            /* Was silent before: the ladder just retried forever with no trace. */
+            LOG_WARN("GNSS mode set (0x%x) failed (%d)", (unsigned)target_mode, (int)mr);
         }
         return;
     }
 
     /* Set GPS NMEA rate */
     if (!g_gps.gnss_nmea_rate_set) {
-        if (wm_sdk_gps_set_nmea_rate(GPS_NMEA_RATE_DEFAULT) == WM_SDK_RESULT_SUCCESS) {
+        wm_SdkResult rr = wm_sdk_gps_set_nmea_rate(GPS_NMEA_RATE_DEFAULT);
+        if (rr == WM_SDK_RESULT_SUCCESS) {
             g_gps.gnss_nmea_rate_set = TRUE;
             LOG_INFO("GNSS nmea rate set (%d)Hz", GPS_NMEA_RATE_DEFAULT);
+        } else {
+            LOG_WARN("GNSS nmea rate set (%d Hz) failed (%d)", GPS_NMEA_RATE_DEFAULT, (int)rr);
         }
         return;
     }
@@ -493,8 +613,13 @@ void gps_ops_retry_configuration(void)
             LOG_INFO("GNSS start mode %u (power-on, config)", (unsigned)start_mode);
         }
 
-        if (wm_sdk_gps_start_mode(start_mode) == WM_SDK_RESULT_SUCCESS)
-            g_gps.gnss_start_mode_set = TRUE;
+        {
+            wm_SdkResult sr = wm_sdk_gps_start_mode(start_mode);
+            if (sr == WM_SDK_RESULT_SUCCESS)
+                g_gps.gnss_start_mode_set = TRUE;
+            else
+                LOG_WARN("GNSS start mode %u failed (%d)", (unsigned)start_mode, (int)sr);
+        }
 
         return;
     }

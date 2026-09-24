@@ -18,8 +18,26 @@ extern "C" {
 
 /** Default APN and credentials (used by network_config_get_defaults) */
 #define NETWORK_DEFAULT_APN       "wheelseye.com"
+#define NETWORK_VI_TEST_APN         "TESTAPN.WHEELSEYE.COM"
+#define NETWORK_AIRTEL_TEST_APN         "test.wheelseye.m2m"
+#define NETWORK_JIO_APN         "jionet"
 #define NETWORK_DEFAULT_USERNAME  ""
 #define NETWORK_DEFAULT_PASSWORD  ""
+
+/** Compile-time APN override (bench testing).
+ *
+ *  Defined => network_config_apply_forced_apn() pushes this APN through
+ *  network_config_set_apn() on every boot, so it wins over BOTH
+ *  network_config_get_defaults() and whatever the persisted config file holds.
+ *  Needed while SMS/TCP config commands cannot be used to switch the APN.
+ *
+ *  Comment the three defines out to go back to the persisted/default APN
+ *  (the persisted file still holds the last forced value, so also send a
+ *  config command - or erase the config - after removing the override).
+ */
+#define NETWORK_FORCE_APN           NETWORK_DEFAULT_APN
+#define NETWORK_FORCE_APN_USERNAME  ""
+#define NETWORK_FORCE_APN_PASSWORD  ""
 
 /**
  * @brief Network module configuration structure (reference layout)
@@ -56,6 +74,15 @@ NetworkConfig *network_config_get_storage(void);
  * @return RESULT_SUCCESS on success, RESULT_INVALID_PARAM on error
  */
 Result network_config_set_apn(const char *apn, const char *username, const char *password);
+
+/**
+ * @brief Apply the NETWORK_FORCE_APN compile-time override, if one is defined.
+ *        Called from weware_network_init() after the config file has been
+ *        loaded, so it overrides both the defaults and the persisted APN.
+ *        No-op (and no flash write) when the APN already matches, or when
+ *        NETWORK_FORCE_APN is not defined.
+ */
+void network_config_apply_forced_apn(void);
 
 /**
  * @brief Set network configuration from comma-separated string and save to file

@@ -143,10 +143,10 @@ static void weware_main_task(void *arg)
  *         source of truth for EVENT_IGN_ON/OFF. Do not broadcast ignition
  *         events from here without reconciling the two sources.
  */
-// void wm_ev_acc_state(BOOL ignition_on)
-// {
-//     RTI_LOG("SDK ACC line: ignition %s", ignition_on ? "ON" : "OFF");
-// }
+void wm_ev_acc_state(BOOL ignition_on)
+{
+    RTI_LOG("SDK ACC line: ignition %s", ignition_on ? "ON" : "OFF");
+}
 
 int appimg_enter(void *param)
 {

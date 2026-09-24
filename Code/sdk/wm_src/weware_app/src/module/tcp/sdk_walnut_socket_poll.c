@@ -33,7 +33,7 @@
 #include "tcp/sdk_functionality_network_compat.h"
 
 #define LOG_TAG "TCP_SKT"
-#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
 #include "module/log/log.h"
 
 /* Exported by the kernel (core_stub.o) but not declared in lwIP headers */

@@ -21,7 +21,7 @@
 #include "tcp/tcp.h"
 
 #define LOG_TAG "TCP_CFG"
-#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
 #include "module/log/log.h"
 
 /*---------------------------------------------------------------

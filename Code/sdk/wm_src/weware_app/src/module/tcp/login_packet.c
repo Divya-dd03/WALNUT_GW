@@ -20,7 +20,7 @@
 #include "weware_version.h"
 
 #define LOG_TAG "LOG_PKT"
-#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
 #include "module/log/log.h"
 
 /*---------------------------------------------------------------

@@ -885,7 +885,11 @@ wm_SdkResult weware_network_init(void)
     if (g_network_config.apn[0] == '\0')
         network_config_get_defaults(&g_network_config);
 
-    /* URC landing queue (reference network_manager pattern): the URC
+    /* Bench override: NETWORK_FORCE_APN (network_config.h), applied after the
+     * config file load so it beats both the defaults above and the persisted
+     * APN. No-op when the macro is not defined. */
+    network_config_apply_forced_apn();
+  /* URC landing queue (reference network_manager pattern): the URC
      * processor is the sole kernel registrant and queue_push()es the bare
      * urcEvent_e code here; this module owns create/destroy. */
     Module *nm = module_manager_get_module(MODULE_ID_NETWORK);

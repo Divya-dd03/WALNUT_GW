@@ -47,7 +47,7 @@
 #include "common/utils.h"            /* utils_hex_str_to_bytes */
 
 #define LOG_TAG "TCP_OPS"
-#define LOG_MODULE_LEVEL LOG_LEVEL_DEBUG
+#define LOG_MODULE_LEVEL LOG_LEVEL_ERROR
 #include "module/log/log.h"
 
 /* Exported by the kernel but not declared in lwIP headers */
