@@ -61,6 +61,27 @@ extern "C" {
 #define GPS_DEFAULT_AGPS_REF              FALSE /**< Default: do not refresh agps every 4h */
 #define GPS_AGPS_VALIDITY_SEC             (4u * 3600u)  /**< A-GPS data validity (sec) */
 #define GPS_AGPS_FAIL_COOLDOWN_SEC        600u  /**< After a failed open, do not retry for this long (sec) */
+
+/**
+ * @brief A-GNSS open policy. Selects between the walnut budget rule and the
+ *        reference firmware's flow; nothing else in the GPS path changes.
+ *
+ * @c 1 (walnut default): @c wm_sdk_gps_open_agps_service() is called **at most
+ *        once per boot**. The latch is armed before the call, so a failed open
+ *        buys no retry (the SDK only queues the request, so a failure cannot be
+ *        told apart from one the server already charged), and the 4 h no-fix
+ *        re-open in @c gps_ops_agps_refresh_if_needed() is suppressed. Motive is
+ *        the assistance server's 12-opens-per-IMEI-per-day ceiling, which this
+ *        build has no persisted counter for.
+ *
+ * @c 0 : the reference/CG flow, byte-for-byte — open when the gates pass, retry
+ *        a failed open after @c GPS_AGPS_FAIL_COOLDOWN_SEC, and re-open after
+ *        @c GPS_AGPS_VALIDITY_SEC without a fix. Set this to restore the
+ *        original behaviour; no other code path is affected either way.
+ */
+#ifndef GPS_AGPS_OPEN_ONCE_PER_BOOT
+#define GPS_AGPS_OPEN_ONCE_PER_BOOT       1
+#endif
 #define GPS_GNSS_POWER_ON_PRE_DELAY_MS    2000u /**< Delay before first GNSS power-on (ms) */
 #define GPS_GNSS_POWER_STABILIZE_MS       2000u /**< Delay after power-on before NMEA configure (ms) */
 #define GPS_DEFAULT_START_MODE            SDK_GNSS_START_HOT /**< Default start mode: HOT */

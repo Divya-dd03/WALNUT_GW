@@ -116,6 +116,31 @@ static BOOL   s_gnss_cfg_err_logged   = FALSE;
 /** One-shot log for the walnut A-GPS NOT_SUPPORTED stub. */
 static BOOL   s_agps_not_supported_logged = FALSE;
 
+#if GPS_AGPS_OPEN_ONCE_PER_BOOT
+/**
+ * A-GNSS is opened **exactly once per boot** (GPS_AGPS_OPEN_ONCE_PER_BOOT).
+ *
+ * The assistance server allows only 12 opens per IMEI per day and one open can
+ * cost up to 3 server requests, so every avoidable call matters. This latch is
+ * deliberately a file-scope static rather than a g_gps field: it must survive
+ * every warm-path reset the app can perform - the 4 h no-fix refresh,
+ * the failed-open cooldown, MOD:SET-GPS-ON's ladder replay and
+ * gps_ops_set_runtime_defaults() - and be cleared only by an actual reboot.
+ *
+ * It is set *before* the call, not after, so a failed open does not buy a
+ * retry: the SDK only queues the request, so a failure cannot be distinguished
+ * from one that already reached the server and was charged.
+ *
+ * NOTE: this bounds the *application's* calls only. lib_wmsrc.a issues its own
+ * wm_agnss_request() from wm_gps_power_on() (every boot, and every
+ * wm_sdk_gps_set_power_status(1)) and from gps_task on the receiver-restart
+ * banner; those cannot be intercepted from here.
+ */
+static BOOL   s_agps_opened_this_boot     = FALSE;
+/** One-shot log for refresh attempts suppressed by the once-per-boot rule. */
+static BOOL   s_agps_refresh_blocked_logged = FALSE;
+#endif /* GPS_AGPS_OPEN_ONCE_PER_BOOT */
+
 UINT32 gps_ops_pop_gps_msg_queue_latch_append(char *buf, UINT32 buf_size)
 {
     /* TODO(gps): reference pops the GPS module msg_q here (BLE payloads for
@@ -637,6 +662,13 @@ void gps_ops_retry_configuration(void)
 
 void gps_ops_open_agps_if_needed(void)
 {
+#if GPS_AGPS_OPEN_ONCE_PER_BOOT
+    /* Once per boot, whatever happened last time. Checked first so no later
+     * gate can be reordered around it. */
+    if (s_agps_opened_this_boot)
+        return;
+#endif
+
     if (!g_gps.config || !g_gps.config->enable_agps)
         return;
     /* Reference also gates on command_config_adoc_net_task_blocked();
@@ -650,17 +682,34 @@ void gps_ops_open_agps_if_needed(void)
         return;
     if (g_gps.gnss_agps_set)
         return;
-    /* Cooldown after a failed open attempt */
-    UINT32 uptime = utils_get_uptime_seconds();
-    if (g_gps.last_agps_open_attempt_time != 0 &&
-        (uptime - g_gps.last_agps_open_attempt_time) < GPS_AGPS_FAIL_COOLDOWN_SEC)
-        return;
+
+#if GPS_AGPS_OPEN_ONCE_PER_BOOT
+    /* Burn the boot's single attempt here, before the call: the SDK only
+     * queues the request, so a non-SUCCESS return does not prove the server
+     * was never reached and must not buy a retry. GPS_AGPS_FAIL_COOLDOWN_SEC
+     * is consequently unused in this configuration - one attempt, then nothing
+     * until the next boot. */
+    s_agps_opened_this_boot = TRUE;
+#else
+    /* Reference: cooldown after a failed open attempt. */
+    {
+        UINT32 uptime = utils_get_uptime_seconds();
+        if (g_gps.last_agps_open_attempt_time != 0 &&
+            (uptime - g_gps.last_agps_open_attempt_time) < GPS_AGPS_FAIL_COOLDOWN_SEC)
+            return;
+    }
+#endif
+
     wm_SdkResult ret = wm_sdk_gps_open_agps_service();
     if (ret == WM_SDK_RESULT_SUCCESS) {
         g_gps.gnss_agps_set = TRUE;
         g_gps.last_agps_open_time = utils_get_uptime_seconds();
         g_gps.last_agps_open_attempt_time = 0;
+#if GPS_AGPS_OPEN_ONCE_PER_BOOT
+        LOG_INFO("A-GPS service opened (once per boot; no further app-side opens until reboot)");
+#else
         LOG_INFO("A-GPS service opened");
+#endif
         return;
     }
     if (ret == WM_SDK_RESULT_NOT_SUPPORTED) {
@@ -674,13 +723,39 @@ void gps_ops_open_agps_if_needed(void)
         return;
     }
     g_gps.last_agps_open_attempt_time = utils_get_uptime_seconds();
+#if GPS_AGPS_OPEN_ONCE_PER_BOOT
+    LOG_ERROR("A-GPS open failed, reason: %d - this boot's single attempt is spent, no retry until reboot",
+                  (int)ret);
+#else
     LOG_ERROR("A-GPS open failed, reason: %d; cooldown %u s",
                   (int)ret, (unsigned)GPS_AGPS_FAIL_COOLDOWN_SEC);
+#endif
 }
 
-/** When no fix and A-GPS was opened >=4 h ago, clear gnss_agps_set for re-open (data valid 4 h only). */
+/**
+ * When no fix and A-GPS was opened >=4 h ago, clear gnss_agps_set so the next
+ * cycle re-opens (assistance data is valid 4 h) - the reference behaviour,
+ * active when @c GPS_AGPS_OPEN_ONCE_PER_BOOT is 0.
+ *
+ * With the once-per-boot rule on it is suppressed, because it re-opens against
+ * a 12/day server budget that this build has no persisted counter for. Worth
+ * knowing if the macro is ever turned back off: despite the @c gnss_agps_set
+ * field comment, this never actually consulted @c config->agps_ref, so
+ * @c GPS_DEFAULT_AGPS_REF being FALSE does **not** hold it off - any boot that
+ * runs >4 h without a fix re-opens.
+ */
 void gps_ops_agps_refresh_if_needed(void)
 {
+#if GPS_AGPS_OPEN_ONCE_PER_BOOT
+    if (s_agps_opened_this_boot) {
+        if (!s_agps_refresh_blocked_logged) {
+            s_agps_refresh_blocked_logged = TRUE;
+            LOG_INFO("A-GPS 4 h refresh suppressed: one open per boot (server budget)");
+        }
+        return;
+    }
+#endif
+
     if (!g_gps.config || !g_gps.config->enable_agps || g_gps.gnss_agps_set == FALSE)
         return;
     if (g_gps.current_gps_data.fix_valid_calculated)
@@ -1579,6 +1654,9 @@ void gps_ops_set_runtime_defaults(void)
     g_gps.gnss_agps_set = FALSE;
     g_gps.last_agps_open_time = 0;
     g_gps.last_agps_open_attempt_time = 0;
+    /* s_agps_opened_this_boot is deliberately NOT reset here: the once-per-boot
+     * A-GNSS rule is scoped to the boot, not to a GPS module re-init, so a
+     * deinit/re-init must not hand out a second open. Only a reboot clears it. */
     s_gps_configured_event_sent = FALSE;
     s_parse_fail_streak = 0u;
     s_parse_fail_reset_sent = FALSE;
