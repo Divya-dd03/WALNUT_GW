@@ -21,7 +21,7 @@
 /* Define */
 #define VOL_MAX       (11)
 #define VOL_MIN       (0)
-#define WM_MP3_BLOCK_SIZE (1024 * 40) // 12KB
+#define WM_MP3_BLOCK_SIZE (1024 * 12) // 12KB
 #define WM_AUD_BUFF_LIMIT (1024 * 100)
 #define AUD_LOOP_LIMIT (30*200)/5 // 30s
 
@@ -32,6 +32,7 @@ void sAPI_AudioSetVolume(AUD_Volume volume);
 void sAPP_AudioTaskInit(void);
 BOOL sAPI_AudioPlay(char* file, BOOL direct, BOOL isSingle);
 BOOL sAPI_AudioStop(void);
+BOOL sAPI_AudioStop_Buffered(void);
 UINT8 sAPI_AudioStatus(void);
 BOOL sAPI_AudioPlay_buff(char* file);
 #endif

@@ -41,6 +41,24 @@ void wm_ui_ble_monitor_demo(void);
 /* Stop the monitor, drop any link and power BLE down. */
 void wm_ui_ble_power_off_demo(void);
 
+/* Print the radio's version, address and settings. */
+void wm_ui_ble_info_demo(void);
+
+/* List the Autoguard's GATT services. Runs in the background. */
+void wm_ui_ble_gatt_demo(void);
+
+/* Prompt for a link and SHA-256, download to D:, verify, then flash the radio. */
+void wm_ui_ble_fw_update_demo(void);
+
+/* Read one health packet from an Autoguard 3.0. Runs in the background. */
+void wm_ui_ble_ag3_demo(void);
+
+/* Prompt for a link and SHA-256, download to D:, verify, then DFU an AG 3.0. */
+void wm_ui_ble_ag3_dfu_demo(void);
+
+/* The same MCUmgr DFU, aimed at a fuel sensor and its own staged image. */
+void wm_ui_ble_fuel_dfu_demo(void);
+
 #ifdef __cplusplus
 }
 #endif

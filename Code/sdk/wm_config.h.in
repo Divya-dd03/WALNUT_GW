@@ -50,6 +50,8 @@
 #define WM_PCB_Z628_V1			103
 #define WM_EVAL_GPS_V1			104
 #define WM_PCB_Z631_V1			105
+#define WM_PCB_Z660_V1			106
+#define WM_PCB_Z636_V1			107
 
 /* System Available SLEEP Settings ------------------------------------------------------------------*/
 #define WM_SLEEP_MODE_OFF		111
@@ -80,7 +82,7 @@
 #define WM_BLE_SUPPORT              1
 
 /* External Flash Settings ------------------------------------------------------------------*/
-#if(WM_CURRENT_BOARD == WM_PCB_Z631_V1)
+#if(WM_CURRENT_BOARD == WM_PCB_Z631_V1 || WM_CURRENT_BOARD == WM_PCB_Z660_V1)  // vendor 19-Nov drop: "|| WM_PCB_Z660_V1" was always true
 #define WM_EXT_FLASH_SUPPORT  1
 #else
 #define WM_EXT_FLASH_SUPPORT  0

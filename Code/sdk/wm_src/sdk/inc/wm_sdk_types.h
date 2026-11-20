@@ -211,16 +211,20 @@ typedef struct
 ** belongs to the application.
 ******************************************************************************/
 #define WM_SDK_BLE_ADDR_STR_LEN   (18u)  /* "AA:BB:CC:DD:EE:FF" + NUL            */
-#define WM_SDK_BLE_NAME_MAX       (21u)  /* 20 UTF-8 bytes + NUL                 */
 #define WM_SDK_BLE_ADV_MAX        (31u)  /* one BLE advertising payload          */
-#define WM_SDK_BLE_UUID_STR_LEN   (5u)   /* 4 hex digits + NUL (16-bit UUID only)*/
-#define WM_SDK_BLE_FILTER_MAX     (8u)   /* addresses the scan filter can hold   */
+#define WM_SDK_BLE_UUID_STR_LEN   (33u)  /* 4 or 32 hex digits + NUL             */
+#define WM_SDK_BLE_FILTER_MAX     (16u)  /* addresses the scan filter can hold   */
+#define WM_SDK_BLE_MAX_LINKS      (3u)   /* simultaneous links, cid 0..2         */
+#define WM_SDK_BLE_SEND_MAX       (250u) /* bytes per wm_sdk_ble_send()          */
+
+/* Peer address type: wm_SdkBleScanResult.addr_type, wm_sdk_ble_connect(). */
+#define WM_SDK_BLE_ADDR_PUBLIC    (0u)
+#define WM_SDK_BLE_ADDR_RANDOM    (1u)
 
 /* Scan mode for wm_sdk_ble_scan_start(). */
 typedef enum
 {
     WM_SDK_BLE_SCAN_OFF     = 0,   /* scanning stopped                           */
-    WM_SDK_BLE_SCAN_DECODED = 1,   /* name / UUID / manufacturer decoded for you  */
     WM_SDK_BLE_SCAN_RAW     = 2,   /* whole advertising payload per report       */
 } wm_SdkBleScanMode;
 
@@ -232,18 +236,42 @@ typedef enum
     WM_SDK_BLE_EVT_DISCONNECTED = 2,  /* the channel went down                   */
 } wm_SdkBleEvent;
 
-/* One scan report. In RAW mode 'data'/'len' hold the advertising payload (walk
- * it with wm_sdk_ble_adv_find) and 'name' is empty; in DECODED mode the reverse. */
+/* One scan report. 'data'/'len' hold the advertising payload (walk it with
+ * wm_sdk_ble_adv_find). */
 typedef struct
 {
     char  addr[WM_SDK_BLE_ADDR_STR_LEN];  /* "AA:BB:CC:DD:EE:FF"                */
-    UINT8 addr_type;                   /* peer address type                  */
+    UINT8 addr_type;                   /* WM_SDK_BLE_ADDR_PUBLIC / _RANDOM   */
     INT16 rssi;                        /* dBm, negative                      */
     UINT8 pkt_type;                    /* 0 = advertisement, 1 = scan response*/
-    UINT8 data[WM_SDK_BLE_ADV_MAX];       /* advertising payload (RAW mode)     */
+    UINT8 data[WM_SDK_BLE_ADV_MAX];       /* advertising payload                */
     UINT8 len;                         /* bytes valid in 'data'              */
-    char  name[WM_SDK_BLE_NAME_MAX];      /* advertised name (DECODED mode)     */
 } wm_SdkBleScanResult;
+
+/* Scan timing, 1.25 ms units: 2..8192, window <= interval. */
+typedef struct
+{
+    UINT16 interval;
+    UINT16 window;
+} wm_SdkBleScanParam;
+
+/* Parameters for new links (not applied to a live link). */
+typedef struct
+{
+    UINT16 interval_min;   /* 1.25 ms units, 6..3200                       */
+    UINT16 interval_max;   /* interval_min..3200                           */
+    UINT16 latency;        /* connection events, 0..499                    */
+    UINT16 timeout;        /* 1.25 ms units, 80..25600, multiple of 8, and
+                            * > (1 + latency) * interval_max * 2            */
+} wm_SdkBleConnParam;
+
+/* One primary service found by wm_sdk_ble_gatt_discover(). */
+typedef struct
+{
+    UINT16 start_handle;
+    UINT16 end_handle;
+    char   uuid[WM_SDK_BLE_UUID_STR_LEN];  /* 4 or 32 hex digits      */
+} wm_SdkBleGattService;
 
 /*******************************************************************************
 ** TCP types (BSD socket conventions - see wm_sdk_tcp.h)
@@ -497,6 +525,38 @@ typedef enum
 
 /* Largest finite blink cycle count wm_sdk_led_set_state() accepts. */
 #define WM_SDK_LED_BLINK_COUNT_MAX (99u)
+
+/*******************************************************************************
+** ACCELEROMETER types
+******************************************************************************/
+/* Acceleration per axis in milli-g (1000 mg = 1 g). */
+typedef struct
+{
+    INT16 x_mg;
+    INT16 y_mg;
+    INT16 z_mg;
+} wm_SdkAccelData;
+
+/* Accelerometer interrupt output pins. */
+typedef enum
+{
+    WM_SDK_ACCEL_INT_1 = 1,
+    WM_SDK_ACCEL_INT_2 = 2,
+} wm_SdkAccelIntLine;
+
+/* Axis bits for wm_SdkAccelMotionConfig.axes and the interrupt callback. */
+#define WM_SDK_ACCEL_AXIS_X    (1u << 0)
+#define WM_SDK_ACCEL_AXIS_Y    (1u << 1)
+#define WM_SDK_ACCEL_AXIS_Z    (1u << 2)
+#define WM_SDK_ACCEL_AXIS_ALL  (WM_SDK_ACCEL_AXIS_X | WM_SDK_ACCEL_AXIS_Y | WM_SDK_ACCEL_AXIS_Z)
+
+/* Motion interrupt settings for wm_sdk_accel_motion_int_enable(). */
+typedef struct
+{
+    UINT16 threshold_mg;  /* change from rest (gravity removed) that fires it */
+    UINT16 duration_ms;   /* time it must stay above threshold; 0 = at once  */
+    UINT8  axes;          /* WM_SDK_ACCEL_AXIS_* bits to watch                */
+} wm_SdkAccelMotionConfig;
 
 /*******************************************************************************
 ** STORAGE types

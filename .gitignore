@@ -30,3 +30,9 @@ Code/kernel/GW1NS-4/customer_app.bin
 instructions.md
 .progress_meta
 z_logs/*
+
+#walnut sdk (19 Nov 2026)
+Extra/*
+graphify-out/*
+__pycache__/
+SESSION_MEMORY.md

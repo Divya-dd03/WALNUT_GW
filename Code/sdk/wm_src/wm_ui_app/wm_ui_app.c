@@ -207,6 +207,21 @@ static void *s_sms_q = NULL;   /* registered receive queue; created once */
 static BOOL s_relay_1_on = FALSE;
 static BOOL s_relay_2_on = FALSE;
 
+/* ---------------------------------------------------------------------------
+** ACCEL interrupt demo: INT1 = motion, INT2 = shock (higher threshold).
+** The callback runs on a platform task, so it only prints.
+** ------------------------------------------------------------------------ */
+static BOOL s_accel_int_on = FALSE;
+
+static void wm_accel_demo_int_cb(wm_SdkAccelIntLine line, UINT8 axes)
+{
+    wm_printf("\r\n[ACCEL] %s on INT%u, axes:%s%s%s\r\n",
+              (line == WM_SDK_ACCEL_INT_1) ? "motion" : "SHOCK", (unsigned)line,
+              (axes & WM_SDK_ACCEL_AXIS_X) ? " X" : "",
+              (axes & WM_SDK_ACCEL_AXIS_Y) ? " Y" : "",
+              (axes & WM_SDK_ACCEL_AXIS_Z) ? " Z" : "");
+}
+
 /*******************************************************************************
 ** USB command dispatcher task
 ******************************************************************************/
@@ -262,6 +277,14 @@ void sTask_WM_UIProcesser(void *arg)
         "42. BLE: Power off",
         "43. RELAY 1: On/off (toggle)",
         "44. RELAY 2: On/off (toggle)",
+        "45. ACCEL: WHO_AM_I + read X/Y/Z",
+        "46. ACCEL: Motion + shock interrupts (toggle)",
+        "47. BLE: Module info + settings",
+        "48. BLE: GATT discovery on Autoguard",
+        "49. BLE: Firmware update from file",
+        "50. BLE: AG 3.0 health packet",
+        "51. BLE: AG 3.0 DFU (download + SHA-256)",
+        "52. BLE: Fuel sensor DFU (download + SHA-256)",
     };
 
     (void)arg;
@@ -540,7 +563,7 @@ void sTask_WM_UIProcesser(void *arg)
             UINT8        power         = 0;
 
             wm_printf("\r\n--- GPS: Configure ---\r\n");
-
+            wm_GPS_LNA_CTRL(WM_LNA_HIGH_GAIN);
             if (wm_sdk_gps_get_power_status(&power) != WM_SDK_RESULT_SUCCESS)
             {
                 wm_printf("GPS not initialised (WM_GPS_SUPPORT off or board not validated?)\r\n");
@@ -1226,6 +1249,30 @@ void sTask_WM_UIProcesser(void *arg)
             wm_ui_ble_monitor_demo();
             break;
 
+        case WM_DEMO_BLE_INFO:
+            wm_ui_ble_info_demo();
+            break;
+
+        case WM_DEMO_BLE_GATT:
+            wm_ui_ble_gatt_demo();
+            break;
+
+        case WM_DEMO_BLE_FW_UPDATE:
+            wm_ui_ble_fw_update_demo();
+            break;
+
+        case WM_DEMO_BLE_AG3_HEALTH:
+            wm_ui_ble_ag3_demo();
+            break;
+
+        case WM_DEMO_BLE_AG3_DFU:
+            wm_ui_ble_ag3_dfu_demo();
+            break;
+
+        case WM_DEMO_BLE_FUEL_DFU:
+            wm_ui_ble_fuel_dfu_demo();
+            break;
+
         case WM_DEMO_BLE_POWER_OFF:
             wm_ui_ble_power_off_demo();
             break;
@@ -1253,6 +1300,76 @@ void sTask_WM_UIProcesser(void *arg)
                       s_relay_2_on ? "ON"  : "OFF",
                       s_relay_2_on ? "off" : "on");
             break;
+
+        /* ---------------------------------------------------------------- ACCEL */
+        case WM_DEMO_ACCEL:
+        {
+            UINT8           who = 0;
+            wm_SdkAccelData acc;
+            wm_SdkResult    rc;
+            UINT32          i;
+
+            wm_printf("\r\n--- ACCEL ---\r\n");
+            rc = wm_sdk_accel_read_reg(0x0Fu, &who);   /* WHO_AM_I */
+            if (rc == WM_SDK_RESULT_NOT_SUPPORTED)
+            {
+                wm_printf("no accelerometer on this board\r\n");
+                break;
+            }
+            if (rc == WM_SDK_RESULT_SUCCESS)
+                wm_printf("WHO_AM_I=0x%02X\r\n", (unsigned)who);
+            else
+                wm_printf("WHO_AM_I read FAILED (%ld)\r\n", (long)rc);
+
+            /* At rest one axis reads about +/-1000 mg (gravity). */
+            for (i = 0; i < 10u; i++)
+            {
+                if (wm_sdk_accel_read_xyz(&acc) == WM_SDK_RESULT_SUCCESS)
+                    wm_printf("x=%d y=%d z=%d mg\r\n",
+                              (int)acc.x_mg, (int)acc.y_mg, (int)acc.z_mg);
+                else
+                    wm_printf("read FAILED\r\n");
+                wm_sdk_task_sleep(100u);
+            }
+            break;
+        }
+
+        /* ------------------------------------------------------ ACCEL interrupts */
+        case WM_DEMO_ACCEL_INT:
+        {
+            /* Gravity is filtered out, so these fire on movement, not tilt. */
+            const wm_SdkAccelMotionConfig motion = { 200u, 50u, WM_SDK_ACCEL_AXIS_ALL };
+            const wm_SdkAccelMotionConfig shock  = { 1000u, 0u, WM_SDK_ACCEL_AXIS_ALL };
+            wm_SdkResult rc;
+
+            wm_printf("\r\n--- ACCEL: interrupts ---\r\n");
+            if (s_accel_int_on)
+            {
+                wm_sdk_accel_motion_int_disable(WM_SDK_ACCEL_INT_1);
+                wm_sdk_accel_motion_int_disable(WM_SDK_ACCEL_INT_2);
+                wm_sdk_accel_set_int_callback(NULL);
+                s_accel_int_on = FALSE;
+                wm_printf("interrupts OFF\r\n");
+                break;
+            }
+
+            rc = wm_sdk_accel_set_int_callback(wm_accel_demo_int_cb);
+            if (rc == WM_SDK_RESULT_NOT_SUPPORTED)
+            {
+                wm_printf("no accelerometer on this board\r\n");
+                break;
+            }
+            wm_printf("INT1 motion (200 mg for 50 ms) -> %s\r\n",
+                      (wm_sdk_accel_motion_int_enable(WM_SDK_ACCEL_INT_1, &motion)
+                           == WM_SDK_RESULT_SUCCESS) ? "ok" : "FAILED");
+            wm_printf("INT2 shock  (1000 mg)          -> %s\r\n",
+                      (wm_sdk_accel_motion_int_enable(WM_SDK_ACCEL_INT_2, &shock)
+                           == WM_SDK_RESULT_SUCCESS) ? "ok" : "FAILED");
+            s_accel_int_on = TRUE;
+            wm_printf("move the board to see motion, tap it hard for shock "
+                      "(re-run this option to stop)\r\n");
+            break;
+        }
 
         default:
             wm_printf("Unknown option %lu\r\n", (unsigned long)opt);

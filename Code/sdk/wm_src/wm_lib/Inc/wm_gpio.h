@@ -22,6 +22,7 @@
 #include "sc_os.h"
 #include "zx_api.h"
 #include "wm_config.h"
+#include "sc_net.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -44,6 +45,7 @@ extern "C"
 ** Type Definitions
 ******************************************************************************/
 /* Key Board ID */
+extern 	UINT8 wm_module_ID;
 extern UINT8 wm_board_ID;
 extern UINT8 wm_battery_ID;
 extern UINT8 wm_sleep_mode;
@@ -163,14 +165,30 @@ void wm_RELAY_CTRL(wm_relay_e relay, BOOL on);
 BOOL wm_ACC_is_on(void);
 void WM_ACC_IntHandler(void);
 
+/* Accelerometer INT1/INT2 GPIO interrupt handlers */
+void WM_ACCEL_INT1_IntHandler(void);
+void WM_ACCEL_INT2_IntHandler(void);
+
 /* BLE enable control */
 void wm_BLE_EN(BOOL enable);
+
+/* Charger "charge done" sense. FALSE on boards without it. */
+BOOL wm_CHG_is_done(void);
 
 /* Board configuration (set per board in wm_gpio_init) */
 
 /* GPS */
 extern BOOL ACC_SUPPORT;
 extern unsigned int ACC_DET;
+
+/* Accelerometer */
+extern BOOL ACCEL_SUPPORT;
+extern unsigned int ACCEL_SDA_MUX;
+extern unsigned int ACCEL_SCL_MUX;
+extern unsigned int ACCEL_INT1;
+extern unsigned int ACCEL_INT1_MUX;
+extern unsigned int ACCEL_INT2;
+extern unsigned int ACCEL_INT2_MUX;
 
 extern BOOL GPS_SUPPORT;
 extern unsigned int GPS_UART_PORT;
@@ -192,6 +210,10 @@ extern unsigned int BLE_UART_TX;
 extern unsigned int BLE_UART_RX;
 extern unsigned int BLE_EN;
 extern unsigned int BLE_EN_MUX;
+
+/* Charger */
+extern BOOL CHG_DONE_SUPPORT;
+extern unsigned int CHG_DONE;
 
 #ifdef __cplusplus
 }

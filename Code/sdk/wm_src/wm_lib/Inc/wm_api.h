@@ -23,6 +23,7 @@
 #include "sc_net.h"
 #include "sc_os.h"
 #include "wm_gpio.h"
+#include "wm_uart.h"
 #include "wm_keys.h"
 #include "wm_led.h"
 #include "wm_power_secure.h"

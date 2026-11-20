@@ -21,6 +21,17 @@
 /* Define */
 
 /* Enum */
+typedef enum
+{
+    GSM_BAND_PGSM_900 = 0,
+    GSM_BAND_DCS_GSM_1800 = 1,
+    GSM_BAND_PCS_GSM_1900 = 2,
+    GSM_BAND_EGSM_900 = 3,
+    GSM_BAND_GSM_450 = 4,
+    GSM_BAND_GSM_480 = 5,
+    GSM_BAND_GSM_850 = 6,
+    GSM_BAND_GSM750 = 7
+}GSMBand_e;
 
 /* Structure */
 
@@ -30,6 +41,11 @@ int sAPI_NetworkSetCfun(int CfunValue);
 SC_STATUS sAPI_SysGetImei(char* ImeiValue);
 SC_STATUS sAPI_SysGetImsi(char* ImsiValue);
 SC_simcard_err_e wm_Simcardstatus(void);
+SC_simcard_err_e wm_Simcardstatus_sim1(void);
+SC_simcard_err_e wm_Simcardstatus_sim2(void);
+void wm_set_SIM_selection(WM_DUAL_SIM_SELECTION sim);
+WM_DUAL_SIM_SELECTION wm_get_SIM_selection(void);
+
 
 /* NTP Functions */
 int wm_ntp_update(char* ntp_server_addr, char* back_server, int timeout);

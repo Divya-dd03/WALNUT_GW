@@ -27,6 +27,13 @@ extern "C" {
 #define MBEDTLS_TLS_RSA_WITH_NULL_MD5                    0x01   /**< Weak! */
 #define MBEDTLS_TLS_RSA_WITH_NULL_SHA                    0x02   /**< Weak! */
 
+#define MBEDTLS_TLS_RSA_WITH_RC4_128_MD5                 0x04
+#define MBEDTLS_TLS_RSA_WITH_RC4_128_SHA                 0x05
+
+#define MBEDTLS_TLS_RSA_WITH_3DES_EDE_CBC_SHA            0x0A
+
+#define MBEDTLS_TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA        0x16
+
 #define MBEDTLS_TLS_PSK_WITH_NULL_SHA                    0x2C   /**< Weak! */
 #define MBEDTLS_TLS_DHE_PSK_WITH_NULL_SHA                0x2D   /**< Weak! */
 #define MBEDTLS_TLS_RSA_PSK_WITH_NULL_SHA                0x2E   /**< Weak! */

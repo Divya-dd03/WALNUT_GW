@@ -121,7 +121,16 @@ typedef enum
     WM_DEMO_BLE_MONITOR,   /* fuel readings + Autoguard health, on a period (toggle) */
     WM_DEMO_BLE_POWER_OFF, /* wm_sdk_ble_set_power_status(0)                     */
     WM_DEMO_RELAY_1,       /* wm_RELAY_CTRL(WM_RELAY_1): relay 1 output (toggle) */
-    WM_DEMO_RELAY_2        /* wm_RELAY_CTRL(WM_RELAY_2): relay 2 output (toggle) */
+    WM_DEMO_RELAY_2,       /* wm_RELAY_CTRL(WM_RELAY_2): relay 2 output (toggle) */
+    WM_DEMO_ACCEL,         /* wm_sdk_accel_*: WHO_AM_I + X/Y/Z samples           */
+    WM_DEMO_ACCEL_INT,     /* wm_sdk_accel_motion_int_*: INT1/INT2 (toggle)      */
+    /* More BLE demos, appended so the numbers above do not move. */
+    WM_DEMO_BLE_INFO,      /* wm_sdk_ble_get_*: version, address, settings       */
+    WM_DEMO_BLE_GATT,      /* wm_sdk_ble_gatt_discover on the Autoguard          */
+    WM_DEMO_BLE_FW_UPDATE, /* wm_sdk_ble_fw_update from a staged file            */
+    WM_DEMO_BLE_AG3_HEALTH,/* Autoguard 3.0 health packet over wm_sdk_ble_*      */
+    WM_DEMO_BLE_AG3_DFU,   /* Autoguard 3.0 firmware update over MCUmgr SMP      */
+    WM_DEMO_BLE_FUEL_DFU   /* Fuel sensor firmware update over MCUmgr SMP        */
 }WM_TASK_SELECTION;
 
 /* HTTP Control */

@@ -37,6 +37,9 @@ extern "C"
 #define FLAG_KEY_PRESS      (1 << 0)    // Key press detected
 #define FLAG_KEY_RELEASE    (1 << 1)    // Key release detected
 #define FLAG_TIMEOUT        (1 << 2)    // Timeout occurred
+#define FLAG_ACC_INT        (1 << 3)    // ACC / ignition edge
+#define FLAG_ACCEL_INT1     (1 << 4)    // Accelerometer INT1
+#define FLAG_ACCEL_INT2     (1 << 5)    // Accelerometer INT2
 #define LOOP_TIMEOUT_TICKS  (7000/5) // 5s safety timeout
 #define KEY_TRIGGER         (88) // Key 1 support
 
@@ -50,6 +53,7 @@ extern void wm_ev_key_3_state(UINT8 key_press_state);
 extern void wm_ev_key_4_state(UINT8 key_press_state);
 extern void wm_ev_key_5_state(UINT8 key_press_state);
 extern void wm_ev_acc_state(BOOL ignition_on);
+extern void wm_ev_accel_int(UINT8 int_line);
 
 /*******************************************************************************
 ** Variables
@@ -73,7 +77,7 @@ void key_3_poll(void* arg);
 void key_4_poll(void* arg);
 void key_5_poll(void* arg);
 
-void acc_poll(void* arg);
+void int_poll(void* arg);
 
 #ifdef __cplusplus
 }

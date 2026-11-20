@@ -14,14 +14,13 @@ extern "C" {
 #endif
 
 typedef enum {
-    DRV_I2C_PORT_0 = 0,    ///< separated I2C for PMIC, APP can not use
+    DRV_I2C_PORT_0 = 0,    ///< I2C0
     DRV_I2C_PORT_1,        ///< I2C1
     DRV_I2C_PORT_2,        ///< I2C2
-    DRV_I2C_PORT_3,        ///< I2C3
-    DRV_I2C_PORT_4,        ///< I2C4, used for CAMERA 
+    DRV_I2C_PORT_3,        ///< < separated I2C for PMIC, APP can not use
+    DRV_I2C_PORT_4,        ///< I2C4, used for CAMERA
     DRV_I2C_PORT_MAX,      ///< Max number of ports supported
 }drvI2cPort_e;
-
 /**
  * @brief modes of I2C interface function
  */
@@ -32,6 +31,10 @@ typedef enum
     DRV_I2C_HS_MODE             = 2,	///<3.4 Mbps slave/3.3 Mbps master,standard mode when not doing a high speed transfer
     DRV_I2C_HS_MODE_FAST        = 3,	///<3.4 Mbps slave/3.3 Mbps master,fast mode when not doing a high speed transfer
 } drvI2cMode_e;
+
+int drvI2cInit(uint8_t i2c_no, uint32_t fastMode);
+int drvI2cRead(uint8_t i2c_no, uint8_t slaveaddress, uint8_t *cmd,uint32_t cmdlen, uint8_t *data, uint32_t datalen);
+int drvI2cWrite(uint8_t i2c_no, uint8_t slaveaddress, uint8_t *cmd,uint32_t cmdlen, uint8_t *data, uint32_t datalen);
 
 /**
  * @brief I2C interface initialization

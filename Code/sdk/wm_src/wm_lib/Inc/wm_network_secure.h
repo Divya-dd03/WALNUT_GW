@@ -67,6 +67,16 @@ INT16 wm_set_pdp_cgdcont(SCApnParmSet* apnSet);
 BOOL wm_get_operator(void);
 INT16 wm_get_serialno(void);
 
+/* Default PDP context (AT*CGDFLT), result in gs_cgdflt_get */
+INT16 wm_get_apn(UINT8 cid);
+INT16 wm_set_apn(SCApnParmSet* apnSet);
+
+/* Automatic APN selection */
+INT16 wm_auto_apn(BOOL enable);
+
+/* SIM service provider name (AT^SPN), result in g_str_sim_operator */
+INT16 wm_get_operator_from_sim(void);
+
 /* System Network Functions */
 void sc_module_init(void);
 

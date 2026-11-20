@@ -35,7 +35,7 @@ uint32_t flash_read_addr(const char *ptable_name);
 
 uint32_t flash_read_size(const char *ptable_name);
 
-/*used to operate external flash, only ZX800SG support*/
+/* used to operate external flash */
 int extflash_spi_init(uint8_t sspport, uint8_t spi_clock);
 uint32_t extflash_erase(uint8_t sspport, uint32_t flash_addr, uint32_t size);
 uint32_t extflash_read(uint8_t sspport, uint32_t flash_addr, uint32_t buf_addr, uint32_t size);

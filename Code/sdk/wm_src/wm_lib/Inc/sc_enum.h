@@ -254,4 +254,10 @@ typedef enum
 
 /* Timer Control*/
 
+/* Dual SIM */
+typedef enum {
+    WM_SIM1_SELECT = 0,
+    WM_SIM2_SELECT
+} WM_DUAL_SIM_SELECTION;
+
 #endif

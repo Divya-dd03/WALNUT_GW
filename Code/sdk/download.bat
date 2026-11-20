@@ -34,6 +34,7 @@ set folder_dw_tool=%folder_dw_current%\..\..\Tools\aboot\
 set file_dw_download_modify_script=%folder_dw_current%\tools\download_modify.py
 set cmd_dw_7z=%folder_dw_current%\prebuilts\win32\bin\7z.exe
 set cmd_dw_python=%folder_dw_current%\prebuilts\win32\python3\python3.exe
+set scrip_app_padding_python=%folder_dw_current%\tools\app_padding.py
 
 set para_dw_target=app
 set cmd_dw_del_folder=rmdir /s /q
@@ -110,6 +111,7 @@ if %module_version%==GW1NS (
         set module_version=%module_version%-4
         set para_dw_variants=ASR1605_OPEN_TRACKER_04MB
         set para_dw_platform=ASR1605_EVB
+        set app_partition_cfg=%folder_dw_tool%\config\partition\ASR1605_SINGLE_FLASH_LAYOUT_OPEN_04MB_O60.json
     ) else (
         echo "GW1NS flash size only support 4M and 2M"
         exit /B 1
@@ -163,6 +165,7 @@ set file_dw_logo_bin=%folder_dw_bin%\logo.bin
 set file_dw_updater_bin=%folder_dw_bin%\updater.bin
 set file_dw_boot33_bin=%folder_dw_bin%\boot33.bin
 set file_dw_app_bin=%folder_dw_bin%\customer_app.bin
+set file_dw_app_pad_bin=%folder_dw_bin%\customer_app_pad.bin
 set file_dw_preboot_bin=%folder_dw_tool%\images\%bootrom_version%\preboot.bin
 set file_dw_boot2_bin=%folder_dw_tool%\images\%bootrom_version%\boot2.bin
 set file_dw_flasher_bin=%folder_dw_tool%\images\%bootrom_version%\flasher.bin
@@ -195,6 +198,16 @@ if not exist %file_dw_app_bin% (
     echo F | %cmd_dw_file_copy% %folder_dw_tool%\images\customer_app.bin %file_dw_app_bin%
 )
 
+if exist %file_dw_app_pad_bin% (
+    %cmd_dw_del_file% %file_dw_app_pad_bin%
+)
+
+%cmd_dw_python% %scrip_app_padding_python% %file_dw_app_bin% %app_partition_cfg%  %file_dw_app_pad_bin%
+if not exist %file_dw_app_pad_bin% (
+    echo customer_app_pad.bin not exist, copy default[no app]
+    exit /B 1
+)
+
 @REM goto aboot tool folder
 cd %folder_dw_tool%
 
@@ -211,11 +224,11 @@ if %module_version:~0,7%==GW1NS (
     set flasher_bin=,flasher_bin=%file_dw_flasher_bin%
     set boot2_bin=,boot2_bin=%file_dw_boot2_bin%
 
-    echo arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,cp2=%file_dw_cp2_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,boot33_bin=%file_dw_boot33_bin%,logo=%file_dw_logo_bin%,updater_bin=%file_dw_updater_bin%,customer_app=%file_dw_app_bin%%preboot_bin%%flasher_bin%%boot2_bin% %file_dw_release_all%
-    arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,cp2=%file_dw_cp2_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,rd=%file_dw_rd_bin%,boot33_bin=%file_dw_boot33_bin%,logo=%file_dw_logo_bin%,updater_bin=%file_dw_updater_bin%,customer_app=%file_dw_app_bin%%preboot_bin%%flasher_bin%%boot2_bin% %file_dw_release_all%
+    echo arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,cp2=%file_dw_cp2_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,boot33_bin=%file_dw_boot33_bin%,logo=%file_dw_logo_bin%,updater=%file_dw_updater_bin%,customer_app=%file_dw_app_pad_bin%%preboot_bin%%flasher_bin%%boot2_bin% %file_dw_release_all%
+    arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,cp2=%file_dw_cp2_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,rd=%file_dw_rd_bin%,boot33_bin=%file_dw_boot33_bin%,logo=%file_dw_logo_bin%,updater=%file_dw_updater_bin%,customer_app=%file_dw_app_pad_bin%%preboot_bin%%flasher_bin%%boot2_bin% %file_dw_release_all%
 ) else (
-    echo arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,boot33_bin=%file_dw_boot33_bin%,rd=%file_dw_rd_bin%,logo=%file_dw_logo_bin%,updater_bin=%file_dw_updater_bin%,customer_app=%file_dw_app_bin% %file_dw_release_all%
-    arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,boot33_bin=%file_dw_boot33_bin%,rd=%file_dw_rd_bin%,logo=%file_dw_logo_bin%,updater_bin=%file_dw_updater_bin%,customer_app=%file_dw_app_bin% %file_dw_release_all%
+    echo arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,boot33_bin=%file_dw_boot33_bin%,rd=%file_dw_rd_bin%,logo=%file_dw_logo_bin%,updater=%file_dw_updater_bin%,customer_app=%file_dw_app_pad_bin% %file_dw_release_all%
+    arelease.exe -c . -q -g -p %para_dw_platform% -v %para_dw_variants% -i cp=%file_dw_cp_bin%,dsp=%file_dw_dsp_bin%,rfbin=%file_dw_rf_bin%,boot33_bin=%file_dw_boot33_bin%,rd=%file_dw_rd_bin%,logo=%file_dw_logo_bin%,updater=%file_dw_updater_bin%,customer_app=%file_dw_app_pad_bin% %file_dw_release_all%
 )
 
 

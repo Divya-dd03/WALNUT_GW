@@ -118,6 +118,7 @@ elseif(WM_BUILD_PURPOSE EQUAL WM_UI_APP)
         wm_ui_app/wm_ui_tcp.c           # Exxclude files if TCP DEMO is not required
         wm_ui_app/wm_ui_mqtt.c          # Exxclude files if MQTT is not required
         wm_ui_app/wm_ui_ble.c           # Exxclude files if BLE DEMO is not required
+        wm_ui_app/wm_ui_smp.c           # BLE MCUmgr/SMP DFU, needed by wm_ui_ble.c
         wm_ui_app/wm_demo_certs.c       # Exxclude files if demo certs are not required
     )
 else()

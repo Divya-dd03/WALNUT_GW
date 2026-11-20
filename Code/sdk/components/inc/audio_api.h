@@ -135,6 +135,8 @@ typedef struct Mp3PlayConfigInfo {
     Mp3PlaybackEventCallback trigger;
 }Mp3PlayConfigInfo;
 
+typedef void (*AUDIOHAL_SpeakerPA_T) (UINT32 on);
+
 typedef enum {
     AUDIO_USE_INTERNAL_CODEC,
     AUDIO_USE_INTERNAL_PWM,
@@ -243,6 +245,14 @@ void auPlayVolumeSet(uint32_t volume);
 
 int amrPlayStart(const char* file_name, const AmrPlaybackConfigInfo* config, AmrPlaybackHandle* handle);
 
+/** Write an amr data block to an amr playback handle.
+ * @param [in] handle                   amr playback handle
+ * @param [in] data                     pcm buffer address
+ * @param [in] size                     pcm buffer size
+ * @returns error code in int, non-zero on failure
+ */
+int amrPlayBuffer(AmrPlaybackHandle handle, const uint8_t* data, uint32_t size);
+
 int amrPlayStop(AmrPlaybackHandle handle, int drain);
 
 int32_t auPlaySoftGainSet(int32_t gain);
@@ -261,6 +271,9 @@ int wavRecordingStart(const char* file_name);
 int pcmRecordingStart(recordingCallback callback);
 
 int recordingStop(void);
+
+//for 1603
+void AudioHAL_AifBindSpeakerPA_CB(AUDIOHAL_SpeakerPA_T cb);
 #ifdef __cplusplus
 }
 #endif

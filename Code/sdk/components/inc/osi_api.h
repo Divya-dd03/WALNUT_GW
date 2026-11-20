@@ -62,7 +62,10 @@ typedef enum{
 	NETWORK_DETACHED,
   SIM_INSERT_EVENT,
   SIM_REMOVE_EVENT,
-  SIM_READY
+  SIM_READY,
+  SIM2_INSERT_EVENT,
+  SIM2_REMOVE_EVENT,
+  SIM2_READY,
 }drvRadioState_e;
 /**
  * radio status callback

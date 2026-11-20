@@ -2,14 +2,8 @@
  ******************************************************************************
  * @file    wm_ble_secure.h
  * @author  Walnut Medical
- * @brief   Public BLE API for the external Jieli BLE module.
- *
- *          Drives the module over the wm_uart BLE channel (115200 8N1) using
- *          its AT command set. Commands are serialised and block until the
- *          module answers OK/ERR or the timeout expires; asynchronous events
- *          (connection, incoming data, scan reports) arrive on callbacks from
- *          a dedicated RTOS task. Payloads are raw bytes - any application
- *          framing on top belongs to the caller.
+ * @brief   Public BLE API for the external Jieli BLE module (AT command
+ *          set rev 0.0.1).
  ******************************************************************************
  * @attention
  *
@@ -35,122 +29,155 @@ extern "C"
 /*******************************************************************************
 ** Defines
 ******************************************************************************/
-#define WM_BLE_ADDR_STR_LEN   13    /* 12 hex digits + NUL                    */
-#define WM_BLE_NAME_MAX       21    /* 20 UTF-8 bytes + NUL                   */
-#define WM_BLE_ADV_MAX        31    /* one BLE advertising payload            */
-#define WM_BLE_UUID_STR_LEN   5     /* 4 hex digits + NUL (16-bit UUID only)  */
+#define WM_BLE_ADDR_STR_LEN     13      /* 12 hex digits + NUL              */
+#define WM_BLE_ADV_MAX          31
+#define WM_BLE_UUID_STR_LEN     33      /* 4 or 32 hex digits + NUL         */
+#define WM_BLE_MAX_LINKS        3       /* central CIDs 0..2                */
+#define WM_BLE_PAYLOAD_MAX      250
+#define WM_BLE_SCAN_FILTER_MAX  16
+#define WM_BLE_FW_CHUNK_MAX     128
 
-/* Channel id reserved by the module for AT-command mode. */
-#define WM_BLE_CHANNEL_AT     9
+#define WM_BLE_CMD_TIMEOUT_MS     3000
+#define WM_BLE_CONN_TIMEOUT_MS    15000
+#define WM_BLE_GATT_TIMEOUT_MS    10000
+#define WM_BLE_FW_END_TIMEOUT_MS  30000
+#define WM_BLE_READY_TIMEOUT_MS   30000
 
-/* Timeouts (ms). A connect is slower than an ordinary command: AT+CONN returns
- * OK as soon as the request is accepted, and the link is only ready when the
- * module reports it. */
-#define WM_BLE_CMD_TIMEOUT_MS   3000
-#define WM_BLE_CONN_TIMEOUT_MS  15000
+/* wm_ble_scan_start(NULL) timing, 1.25 ms units */
+#define WM_BLE_SCAN_INTERVAL_DEF  96
+#define WM_BLE_SCAN_WINDOW_DEF    48
 
-/* Default Auto Guard target, for wm_ble_set_target_uuid(). 16-bit UUIDs only. */
 #define WM_BLE_DEFAULT_SERVICE  "00FF"
 #define WM_BLE_DEFAULT_CHAR     "FF01"
+
+/* Peer address type, as in +SCANRAW and AT+CONN */
+#define WM_BLE_ADDR_PUBLIC      0
+#define WM_BLE_ADDR_RANDOM      1
+
+/* Failure reason from wm_ble_get_last_err(): ERR:<code> 1..7, or local */
+#define WM_BLE_ERR_NONE              0
+#define WM_BLE_ERR_INVALID_COMMAND   1
+#define WM_BLE_ERR_INVALID_PARAMETER 2
+#define WM_BLE_ERR_INVALID_STATE     3
+#define WM_BLE_ERR_NO_RESOURCES      4
+#define WM_BLE_ERR_NOT_CONNECTED     5
+#define WM_BLE_ERR_BLE_FAILURE       6
+#define WM_BLE_ERR_FW_VERIFY         7
+#define WM_BLE_ERR_TIMEOUT           (-1)   /* no answer from the module */
 
 /*******************************************************************************
 ** Type Definitions
 ******************************************************************************/
 typedef enum
 {
-    WM_BLE_EVT_READY = 0,       /* IM_READY - module (re)initialised; all link
-                                 * state is void and must be rebuilt          */
-    WM_BLE_EVT_CONNECTED,       /* IM_CONN:<cid> - link ready on that channel */
-    WM_BLE_EVT_DISCONNECTED     /* IM_DISC:<cid> - channel went down          */
+    WM_BLE_EVT_READY = 0,       /* IM_READY - all link state is void   */
+    WM_BLE_EVT_CONNECTED,       /* IM_CONN:<cid>                       */
+    WM_BLE_EVT_DISCONNECTED     /* IM_DISC:<cid>                       */
 } wm_ble_evt_e;
 
-typedef enum
-{
-    WM_BLE_SCAN_OFF     = 0,
-    WM_BLE_SCAN_DECODED = 1,    /* module decodes NAME/UUID/MANU for us       */
-    WM_BLE_SCAN_RAW     = 2     /* whole advertising payload per report       */
-} wm_ble_scan_mode_e;
-
-/* One scan report. In raw mode 'data' holds the complete advertising payload
- * and 'name' is empty; in decoded mode 'data' is empty and 'name' carries the
- * advertised local name when the module reported one. */
 typedef struct
 {
-    char    addr[WM_BLE_ADDR_STR_LEN];  /* 12 uppercase hex digits            */
-    UINT8   addr_type;
-    INT16   rssi;                       /* dBm, negative                      */
-    UINT8   pkt_type;                   /* 0 = advertisement, 1 = scan response */
-    UINT8   data[WM_BLE_ADV_MAX];       /* raw AD structures (raw mode)        */
-    UINT8   len;                        /* bytes valid in 'data'               */
-    char    name[WM_BLE_NAME_MAX];      /* advertised name (decoded mode)      */
+    char    addr[WM_BLE_ADDR_STR_LEN];
+    UINT8   addr_type;                  /* 0 = public, 1 = random      */
+    INT16   rssi;
+    UINT8   pkt_type;                   /* 0 = adv, 1 = scan response  */
+    UINT8   data[WM_BLE_ADV_MAX];
+    UINT8   len;
 } wm_ble_scan_result_t;
 
-/* All three run on the BLE task (safe context). Pointers are valid only for the
- * duration of the call - copy out anything you need to keep. Keep the work
- * short: the parser task is blocked while a callback runs, and no blocking
- * wm_ble_* call may be made from inside one. */
+typedef struct
+{
+    UINT16  interval;           /* 2..8192                             */
+    UINT16  window;             /* 2..interval                         */
+    UINT8   filter_policy;      /* 0 = all, 1 = scan filter list only  */
+} wm_ble_scan_param_t;
+
+typedef struct
+{
+    UINT16  interval_min;       /* 6..3200                             */
+    UINT16  interval_max;       /* interval_min..3200                  */
+    UINT16  latency;            /* 0..499                              */
+    UINT16  timeout;            /* 80..25600, multiple of 8            */
+} wm_ble_conn_param_t;
+
+typedef struct
+{
+    UINT16  start_handle;
+    UINT16  end_handle;
+    char    uuid[WM_BLE_UUID_STR_LEN];
+} wm_ble_gatt_svc_t;
+
+/* Run on the BLE task; make no blocking wm_ble_* call from inside one. */
 typedef void (*wm_ble_evt_cb)(wm_ble_evt_e evt, int cid);
 typedef void (*wm_ble_data_cb)(int cid, const UINT8 *data, UINT16 len);
 typedef void (*wm_ble_scan_cb)(const wm_ble_scan_result_t *res);
-
-/* Every complete line the module sends, before it is classified or parsed - so
- * unrecognised and malformed lines are visible too. Diagnostics only; parsing
- * is unaffected by whether this is set. */
 typedef void (*wm_ble_line_cb)(const char *line, UINT16 len);
 
 /*******************************************************************************
 ** Functions
 ******************************************************************************/
-/* Create the mutexes/flag/queue/task and power the module on. Idempotent, and
- * a no-op on a board whose BLE_SUPPORT flag is FALSE. */
 void      wm_ble_init(void);
-
-/* Power the module on (enable pin + UART open) / off (UART close + disable). */
 SC_STATUS wm_ble_power_on(void);
 SC_STATUS wm_ble_power_off(void);
 
-/* Identity / configuration. 'out' is always NUL-terminated on success. */
-SC_STATUS wm_ble_get_version(char *out, int out_sz);    /* AT+GVER    */
-SC_STATUS wm_ble_get_name(char *out, int out_sz);       /* AT+NAME?   */
-SC_STATUS wm_ble_set_name(const char *name);            /* <= 20 bytes, no comma */
-SC_STATUS wm_ble_get_addr(char *out, int out_sz);       /* AT+LBDADDR? */
+/* System */
+SC_STATUS wm_ble_get_version(char *out, int out_sz);
+SC_STATUS wm_ble_get_addr(char *out, int out_sz);
+SC_STATUS wm_ble_get_baud(UINT32 *baud);
+SC_STATUS wm_ble_set_baud(UINT32 baud);        /* also moves the host UART */
+SC_STATUS wm_ble_get_txpower(INT8 *dbm);
+SC_STATUS wm_ble_set_txpower(INT8 dbm);
+SC_STATUS wm_ble_get_lowpower(bool *enable);
+SC_STATUS wm_ble_set_lowpower(bool enable);
 
-/* Observer scanning. Reports arrive on the scan callback until scan_stop().
- * Note scanning keeps the UART busy, which holds off sleep - scan in windows
- * rather than leaving it on. */
-SC_STATUS wm_ble_scan_start(wm_ble_scan_mode_e mode);
+/* Observer. NULL param = default timing, filter policy 0. */
+SC_STATUS wm_ble_scan_start(const wm_ble_scan_param_t *param);
 SC_STATUS wm_ble_scan_stop(void);
 void      wm_ble_set_scan_cb(wm_ble_scan_cb cb);
 
-/* Central connection. Both UUIDs are exactly 4 hex digits - the module has no
- * 128-bit form. Set the target before connecting. */
+SC_STATUS wm_ble_scan_filter_add(const char *addr);
+SC_STATUS wm_ble_scan_filter_remove(const char *addr);
+SC_STATUS wm_ble_scan_filter_clear(void);
+SC_STATUS wm_ble_scan_filter_get(char out[][WM_BLE_ADDR_STR_LEN], int max, int *count);
+
+/* Central */
+SC_STATUS wm_ble_get_conn_param(wm_ble_conn_param_t *param);
+SC_STATUS wm_ble_set_conn_param(const wm_ble_conn_param_t *param);
 SC_STATUS wm_ble_set_target_uuid(const char *service, const char *characteristic);
 
-/* Connect to a peer and wait for the link to become ready. Returns SC_SUCCESS
- * only after the module reports the connection up; a request the module accepts
- * but cannot complete returns SC_FAIL. 'addr' is 12 hex digits, exactly as the
- * scanner reported it (do not reverse it). */
-SC_STATUS wm_ble_connect(const char *addr);
+/* Blocks until IM_CONN; addr_type is WM_BLE_ADDR_PUBLIC/RANDOM. The allocated
+ * CID goes to *cid_out (may be NULL). */
+SC_STATUS wm_ble_connect(const char *addr, UINT8 addr_type, int *cid_out);
 SC_STATUS wm_ble_disconnect(int cid);
 
-bool      wm_ble_is_connected(void);
-int       wm_ble_get_cid(void);     /* live channel id, or -1 when not connected */
+bool      wm_ble_is_connected(void);            /* any CID up          */
+bool      wm_ble_is_cid_connected(int cid);
+UINT8     wm_ble_get_link_mask(void);           /* bit n = CID n up    */
+int       wm_ble_get_cid(void);                 /* lowest live CID, -1 */
 
-/* Send application bytes to the connected peer's target characteristic.
- * SC_SUCCESS means the module accepted them - it is not a peer acknowledgement;
- * wait for the reply on the data callback when the protocol expects one. */
 SC_STATUS wm_ble_send(int cid, const UINT8 *data, UINT16 len);
 
-/* Register (or clear, with NULL) the asynchronous callbacks. */
+/* Blocks until +GATTDONE. service_uuid NULL = all services. */
+SC_STATUS wm_ble_gatt_discover(int cid, const char *service_uuid,
+                               wm_ble_gatt_svc_t *out, int max,
+                               int *count, int *status);
+
 void      wm_ble_set_evt_cb(wm_ble_evt_cb cb);
 void      wm_ble_set_data_cb(wm_ble_data_cb cb);
 void      wm_ble_set_line_cb(wm_ble_line_cb cb);
 
-/* Escape hatch for a command with no wrapper above. Pass the command body only
- * ("AT+ADV?"); the UART terminator is appended for you. Any data record the
- * module returns before OK is copied into 'resp' (pass NULL to discard it).
- * timeout_ms of 0 uses the module default. */
+/* Firmware update */
+SC_STATUS wm_ble_fw_start(UINT32 size, UINT32 crc32);
+SC_STATUS wm_ble_fw_data(UINT32 offset, const UINT8 *data, UINT16 len);
+SC_STATUS wm_ble_fw_end(void);
+SC_STATUS wm_ble_fw_update_file(const char *path);  /* waits for IM_READY */
+
+/* Raw command; CR is appended. Last +record value is copied to 'resp'. */
 SC_STATUS wm_ble_send_at(const char *cmd, char *resp, int resp_sz, UINT32 timeout_ms);
+
+/* WM_BLE_ERR_* for the most recent wm_ble_* call that returned SC_FAIL.
+ * Shared by all tasks: read it straight after the failing call. */
+int       wm_ble_get_last_err(void);
 
 #ifdef __cplusplus
 }

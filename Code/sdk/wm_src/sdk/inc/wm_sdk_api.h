@@ -38,6 +38,7 @@
 #include "wm_sdk_adc.h"
 #include "wm_sdk_i2c.h"
 #include "wm_sdk_led.h"
+#include "wm_sdk_accel.h"
 #include "wm_sdk_urc.h"
 #include "wm_sdk_system.h"
 #include "wm_sdk_log.h"
