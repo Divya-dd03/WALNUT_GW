@@ -128,7 +128,25 @@ if %module_version%==GW1NS (
         echo "ZX600CH flash size only support 16M and 8M"
         exit /B 1
     )	
-) 
+)
+
+@REM external flash: follow WM_CURRENT_EXT_FLASH in wm_config.h.in (WM_EXT_FLASH_SUPPORT is derived from it)
+set para_dw_board=
+set para_dw_extfs=0
+for /f "tokens=3" %%a in ('findstr /b /c:"#define WM_CURRENT_BOARD" %folder_dw_current%\wm_config.h.in') do set para_dw_board=%%a
+for /f "tokens=3" %%a in ('findstr /b /c:"#define WM_CURRENT_EXT_FLASH " %folder_dw_current%\wm_config.h.in') do if /i "%%a"=="WM_EXT_FLASH_ON" set para_dw_extfs=1
+echo board: %para_dw_board%
+echo external flash: %para_dw_extfs%
+if "%para_dw_extfs%"=="1" (
+    if "%para_dw_flash_size%" == "4" (
+        set para_dw_variants=%para_dw_variants%_EXTFS
+    ) else (
+        echo WM_EXT_FLASH_SUPPORT=1 has no variant for flash size %para_dw_flash_size%
+        exit /B 1
+    )
+)
+echo variant: %para_dw_variants%
+
 set folder_dw_bin=%folder_dw_current%\..\kernel\%module_version%\
 
 @REM load build config

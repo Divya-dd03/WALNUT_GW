@@ -49,6 +49,18 @@ extern 	UINT8 wm_module_ID;
 extern UINT8 wm_board_ID;
 extern UINT8 wm_battery_ID;
 extern UINT8 wm_sleep_mode;
+extern UINT8 wm_mlcd_support;
+extern UINT8 wm_glcd_support;
+extern UINT8 wm_audio_codec;
+extern UINT8 wm_wifi_support;
+extern UINT8 wm_ble_support;
+extern UINT8 wm_gnss_support;
+extern UINT8 wm_nfc_support;
+extern UINT8 wm_dual_sim_support;
+extern UINT8 wm_enc_led_support;
+extern UINT8 wm_ext_flash_support;
+extern UINT8 wm_keypad_type;
+extern UINT8 wm_accel_support;
 extern volatile int gi_key_out_timeout;
 
 /* Key GPIO */

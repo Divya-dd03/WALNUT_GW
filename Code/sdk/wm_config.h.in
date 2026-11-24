@@ -57,12 +57,58 @@
 #define WM_SLEEP_MODE_OFF		111
 #define WM_SLEEP_MODE_ON		222
 
+/* System Available LCD Settings (MLCD = merchant segment LCD, GLCD = graphic LCD) -------------------*/
+#define WM_MLCD_OFF				130
+#define WM_MLCD_ON				131
+#define WM_GLCD_OFF				132
+#define WM_GLCD_ON				133
+
+/* System Available Audio Codec Settings ------------------------------------------------------------------*/
+#define WM_AUDIO_CODEC_DEFAULT		140
+#define WM_AUDIO_CODEC_INTERNAL	141
+#define WM_AUDIO_CODEC_EXTERNAL	142
+
+/* System Available Connectivity Settings ------------------------------------------------------------------*/
+#define WM_WIFI_OFF				150
+#define WM_WIFI_ON				151
+#define WM_BLE_OFF				152
+#define WM_BLE_ON				153
+#define WM_GNSS_OFF				154
+#define WM_GNSS_ON				155
+#define WM_NFC_OFF				156
+#define WM_NFC_ON				157
+#define WM_DUAL_SIM_OFF			158
+#define WM_DUAL_SIM_ON			159
+
+/* System Available Peripheral Settings ------------------------------------------------------------------*/
+#define WM_ENC_LED_OFF			170
+#define WM_ENC_LED_ON			171
+#define WM_EXT_FLASH_OFF		172
+#define WM_EXT_FLASH_ON			173
+#define WM_KEYPAD_NONE			174
+#define WM_KEYPAD_4X3			175
+#define WM_KEYPAD_4X4			176
+#define WM_ACCEL_OFF			177
+#define WM_ACCEL_ON			178
+
 /* System Settings ------------------------------------------------------------------*/
 #define WM_CURRENT_DEBUG_MODE WM_DEBUG_DBG_UART_MODE // WM_DEBUG_DEV_MODE
 #define WM_CURRENT_LOG_LEVEL WM_LOG_LEVEL_DEBUG
 #define WM_CURRENT_BATTERY WM_BATTERY_2000_mAH
 #define WM_CURRENT_BOARD WM_PCB_Z631_V1
 #define WM_CURRENT_SLEEP_MODE WM_SLEEP_MODE_ON
+#define WM_CURRENT_MLCD WM_MLCD_OFF
+#define WM_CURRENT_GLCD WM_GLCD_OFF
+#define WM_CURRENT_AUDIO_CODEC WM_AUDIO_CODEC_DEFAULT
+#define WM_CURRENT_WIFI WM_WIFI_OFF
+#define WM_CURRENT_BLE WM_BLE_ON
+#define WM_CURRENT_GNSS WM_GNSS_ON
+#define WM_CURRENT_NFC WM_NFC_OFF
+#define WM_CURRENT_DUAL_SIM WM_DUAL_SIM_OFF
+#define WM_CURRENT_ENC_LED WM_ENC_LED_OFF
+#define WM_CURRENT_EXT_FLASH WM_EXT_FLASH_ON
+#define WM_CURRENT_KEYPAD WM_KEYPAD_NONE
+#define WM_CURRENT_ACCEL WM_ACCEL_ON
 
 #if(WM_CURRENT_BOARD == WM_PCB_Z628_V1)
 #define WM_EXT_CDC_SUPPORT  1
@@ -71,7 +117,7 @@
 #endif
 
 /* GPS Settings ------------------------------------------------------------------*/
-#define WM_GPS_SUPPORT              1
+#define WM_GPS_SUPPORT              (WM_CURRENT_GNSS == WM_GNSS_ON)
 #define WM_AGNSS_SUPPORT            1   /* needs WM_GPS_SUPPORT */
 
 #if WM_AGNSS_SUPPORT && !WM_GPS_SUPPORT
@@ -79,14 +125,11 @@
 #endif
 
 /* BLE Settings ------------------------------------------------------------------*/
-#define WM_BLE_SUPPORT              1
+#define WM_BLE_SUPPORT              (WM_CURRENT_BLE == WM_BLE_ON)
 
 /* External Flash Settings ------------------------------------------------------------------*/
-#if(WM_CURRENT_BOARD == WM_PCB_Z631_V1 || WM_CURRENT_BOARD == WM_PCB_Z660_V1)  // vendor 19-Nov drop: "|| WM_PCB_Z660_V1" was always true
-#define WM_EXT_FLASH_SUPPORT  1
-#else
-#define WM_EXT_FLASH_SUPPORT  0
-#endif
+/* Selected by WM_CURRENT_EXT_FLASH; download.bat reads the same selector */
+#define WM_EXT_FLASH_SUPPORT        (WM_CURRENT_EXT_FLASH == WM_EXT_FLASH_ON)
 
 /* System Build Purpose ------------------------------------------------------------------*/
 #define WM_PROD_APP 77
